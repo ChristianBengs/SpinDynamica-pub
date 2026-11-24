@@ -1,0 +1,7 @@
+*.md
+*.wls
+Tests/
+Scripts/
+sample_data/
+Benchmarks/
+dist/
