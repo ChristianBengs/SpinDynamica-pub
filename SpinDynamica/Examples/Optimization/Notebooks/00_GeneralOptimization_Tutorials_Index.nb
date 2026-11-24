@@ -1,0 +1,292 @@
+(* Content-type: application/vnd.wolfram.mathematica *)
+
+(*** Wolfram Notebook File ***)
+(* http://www.wolfram.com/nb *)
+
+(* CreatedBy='Wolfram 14.3' *)
+
+(*CacheID: 234*)
+(* Internal cache information:
+NotebookFileLineBreakTest
+NotebookFileLineBreakTest
+NotebookDataPosition[       154,          7]
+NotebookDataLength[     11283,        283]
+NotebookOptionsPosition[      9488,        247]
+NotebookOutlinePosition[      9894,        263]
+CellTagsIndexPosition[      9851,        260]
+WindowFrame->Normal*)
+
+(* Beginning of Notebook Content *)
+Notebook[{
+
+Cell[CellGroupData[{
+Cell["\<\
+SpinDynamica General-Purpose Optimisation \[AHat]\.80\.94 Interactive \
+Notebook Tutorials\
+\>", "Title",ExpressionUUID->"912669c4-e98e-1144-a991-d99040c48869"],
+
+Cell["\<\
+Hands-on Mathematica laboratories for compiled transformation amplitude \
+optimisation, multi-scale analytical adjoints & O(K) Hessians, ensembles, CF4 \
+time-dependent generators, Liouville relaxation, and Bruker data import.\
+\>", "Subtitle",ExpressionUUID->"6fa0fe2a-45e7-1f4e-8e9b-755cf9a67a22"],
+
+Cell[CellGroupData[{
+
+Cell["Welcome and Notebook Philosophy", "Section",ExpressionUUID->"8eec3315-da66-7d49-955f-b32c07f85b05"],
+
+Cell["\<\
+This notebook series pairs SpinDynamica's high-performance general-purpose \
+optimisation subsystem (SpinDynamica/Optimization/) and upgraded \
+MaximizeTransformationAmplitude interface \
+(SpinDynamica/Simulations/Optimization.m) with interactive Mathematica \
+laboratories. Every notebook loads the repository SpinDynamica checkout \
+cleanly and complements \
+documentation/Optimization/General_Optimization_Guide.md and \
+Examples/Optimization/GeneralOptimization_WorkedExamples.wls.\
+\>", "Text",ExpressionUUID->"2b9d12d5-87a8-c544-8cf7-41c5e7a406ac"],
+
+Cell["\<\
+Every computationally active lab button specifies Method -> \"Queued\" so \
+larger optimisation sweeps complete without FrontEnd timeouts, while plot \
+inspections update immediately.\
+\>", "Text",ExpressionUUID->"3c3aaa1c-bbbb-a243-ad8b-934d08a74d4e"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Environment Verification", "Section",ExpressionUUID->"6b8c13cb-c9ab-a540-91c7-5d634289bf68"],
+
+Cell["\<\
+Run both setup cells below in order. Cell 1 locates the repository root and \
+loads SpinDynamica`; Cell 2 verifies public symbol exposure across \
+GeneralOptimization, Solvers, Simulations`Optimization`, and Signals`Bruker`.\
+\
+\>", "Text",ExpressionUUID->"9a5fdeef-fb1f-084a-ad30-1169aceeb58a"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"nbRepoRoot", " ", "=", " ", 
+   RowBox[{"Module", "[", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"dir", " ", "=", " ", 
+        RowBox[{"Quiet", "[", 
+         RowBox[{"Check", "[", 
+          RowBox[{
+           RowBox[{"NotebookDirectory", "[", "]"}], ",", " ", 
+           RowBox[{"Directory", "[", "]"}]}], "]"}], "]"}]}], ",", " ", 
+       RowBox[{"found", " ", "=", " ", "None"}]}], "}"}], ",", "\n", "  ", 
+     RowBox[{
+      RowBox[{"Do", "[", "\n", "    ", 
+       RowBox[{
+        RowBox[{
+         RowBox[{"If", "[", 
+          RowBox[{
+           RowBox[{"FileExistsQ", "[", 
+            RowBox[{"FileNameJoin", "[", 
+             RowBox[{"{", 
+              RowBox[{
+              "dir", ",", " ", "\"\<SpinDynamica\>\"", ",", 
+               " ", "\"\<SpinDynamica.m\>\""}], "}"}], "]"}], "]"}], ",", 
+           "\n", "      ", 
+           RowBox[{
+            RowBox[{"found", " ", "=", " ", "dir"}], ";", " ", 
+            RowBox[{"Break", "[", "]"}]}]}], "]"}], ";", "\n", "    ", 
+         RowBox[{"dir", " ", "=", " ", 
+          RowBox[{"ParentDirectory", "[", "dir", "]"}]}]}], ",", "\n", "    ", 
+        RowBox[{"{", "6", "}"}]}], "\n", "  ", "]"}], ";", "\n", "  ", 
+      RowBox[{"If", "[", 
+       RowBox[{
+        RowBox[{
+         RowBox[{"found", " ", "===", " ", "None"}], " ", "&&", " ", 
+         RowBox[{"FileExistsQ", "[", 
+          RowBox[{"FileNameJoin", "[", 
+           RowBox[{"{", 
+            RowBox[{
+             RowBox[{"Directory", "[", "]"}], ",", " ", "\"\<SpinDynamica\>\"",
+              ",", " ", "\"\<SpinDynamica.m\>\""}], "}"}], "]"}], "]"}]}], ",",
+         "\n", "    ", 
+        RowBox[{"found", " ", "=", " ", 
+         RowBox[{"Directory", "[", "]"}]}]}], "]"}], ";", "\n", "  ", 
+      "found"}]}], "\n", "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"If", "[", 
+   RowBox[{
+    RowBox[{"StringQ", "[", "nbRepoRoot", "]"}], ",", "\n", "  ", 
+    RowBox[{"Needs", "[", 
+     RowBox[{"\"\<SpinDynamica`\>\"", ",", " ", 
+      RowBox[{"FileNameJoin", "[", 
+       RowBox[{"{", 
+        RowBox[{
+        "nbRepoRoot", ",", " ", "\"\<SpinDynamica\>\"", ",", 
+         " ", "\"\<SpinDynamica.m\>\""}], "}"}], "]"}]}], "]"}], ",", "\n", 
+    "  ", 
+    RowBox[{"Needs", "[", "\"\<SpinDynamica`\>\"", "]"}]}], "\n", "]"}], 
+  ";"}]}], "Input",ExpressionUUID->"47cfc2ec-8447-d34f-b5a7-a9b00525783c"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"SetUserLevel", "[", "2", "]"}], ";"}], "\n", 
+ RowBox[{"<|", "\n", "  ", 
+  RowBox[{
+   RowBox[{"\"\<SpinDynamicaFile\>\"", " ", "->", " ", 
+    RowBox[{"FindFile", "[", "\"\<SpinDynamica`\>\"", "]"}]}], ",", "\n", 
+   "  ", 
+   RowBox[{"\"\<Version\>\"", " ", "->", " ", "$SpinDynamicaVersion"}], ",", 
+   "\n", "  ", 
+   RowBox[{"\"\<GeneralOptimizationSymbols\>\"", " ", "->", " ", 
+    RowBox[{"Length", "[", 
+     RowBox[{
+     "Names", "[", "\"\<Optimization`GeneralOptimization`*\>\"", "]"}], 
+     "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<SolverSymbols\>\"", " ", "->", " ", 
+    RowBox[{"Length", "[", 
+     RowBox[{"Names", "[", "\"\<Optimization`Solvers`*\>\"", "]"}], "]"}]}], ",",
+    "\n", "  ", 
+   RowBox[{"\"\<SimulationsOptSymbols\>\"", " ", "->", " ", 
+    RowBox[{"Names", "[", "\"\<Simulations`Optimization`*\>\"", "]"}]}], ",", 
+   "\n", "  ", 
+   RowBox[{"\"\<MTAContext\>\"", " ", "->", " ", 
+    RowBox[{"Context", "[", "MaximizeTransformationAmplitude", "]"}]}], ",", 
+   "\n", "  ", 
+   RowBox[{"\"\<SignalsBrukerSymbols\>\"", " ", "->", " ", 
+    RowBox[{"Length", "[", 
+     RowBox[{"Names", "[", "\"\<Signals`Bruker`*\>\"", "]"}], "]"}]}]}], "\n",
+   "|>"}]}], "Input",ExpressionUUID->"94139b3b-cfcc-d74a-a1f0-1d99f81000e0"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Tutorial Notebooks Index (Click Any Link to Open)", "Section",ExpressionUUID->"79062afe-c11d-4b4a-a4d3-9fc093643674"],
+
+Cell[TextData[{
+ "01. ",
+ StyleBox[ButtonBox["01_Transformation_Amplitude_Optimization_Basics.nb",
+  BaseStyle->"Hyperlink",
+  Evaluator->Automatic,
+  Method->"Preemptive",
+  ButtonFunction:>NotebookOpen[
+    FileNameJoin[{
+      NotebookDirectory[], 
+      "01_Transformation_Amplitude_Optimization_Basics.nb"}]]], "Hyperlink"],
+ " \[AHat]\.80\.94 Drop-in MaximizeTransformationAmplitude Engine -> \
+Automatic/Compiled/Legacy, HoldAll isolation, \
+TransformationOptimizationProblem, and 1st-order vs derivative-free solver \
+comparison."
+}], "Item",ExpressionUUID->"c687231c-26e3-d444-baf8-f1e0014ef4f0"],
+
+Cell[TextData[{
+ "02. ",
+ StyleBox[ButtonBox["02_Bounded_MultiScale_and_SecondOrder_Optimization.nb",
+  BaseStyle->"Hyperlink",
+  Evaluator->Automatic,
+  Method->"Preemptive",
+  ButtonFunction:>NotebookOpen[
+    FileNameJoin[{
+      NotebookDirectory[], 
+      "02_Bounded_MultiScale_and_SecondOrder_Optimization.nb"}]]], 
+  "Hyperlink"],
+ " \[AHat]\.80\.94 ConstrainPositive & box bounds, ParameterScaling across \
+10^-3..10^3, analytical gradient & O(K) HVP verification, BoundTransform -> \
+\"Sigmoid\"/\"Log\", and FuseStaticEvents / EnableCaching."
+}], "Item",ExpressionUUID->"f0a21383-ba76-044c-b36c-882b2ab982ae"],
+
+Cell[TextData[{
+ "03. ",
+ StyleBox[ButtonBox["03_Ensembles_TimeDependent_and_Liouville_Optimization.nb",
+  BaseStyle->"Hyperlink",
+  Evaluator->Automatic,
+  Method->"Preemptive",
+  ButtonFunction:>NotebookOpen[
+    FileNameJoin[{
+      NotebookDirectory[], 
+      "03_Ensembles_TimeDependent_and_Liouville_Optimization.nb"}]]], 
+  "Hyperlink"],
+ " \[AHat]\.80\.94 Robust EnsembleAverage pulse design, continuous \
+TimeDependentGeneratorFunction / CF4 derivatives, dissipative Liouville \
+relaxation, CoherenceOrderFiltration, and non-smooth / BlackBoxFallback \
+handling."
+}], "Item",ExpressionUUID->"bb565472-12ed-4041-88a6-1fda31884faf"],
+
+Cell[TextData[{
+ "Signals Companion: ",
+ StyleBox[ButtonBox["01_Bruker_1D_Data_Import_and_Signal_Workflow.nb",
+  BaseStyle->"Hyperlink",
+  Evaluator->Automatic,
+  Method->"Preemptive",
+  ButtonFunction:>NotebookOpen[
+    FileNameJoin[{
+      ParentDirectory[
+       ParentDirectory[
+        NotebookDirectory[]]], "Signals", "Notebooks", 
+      "01_Bruker_1D_Data_Import_and_Signal_Workflow.nb"}]]], "Hyperlink"],
+ " \[AHat]\.80\.94 Experimental Bruker 1D processed NMR data import, \
+axis/intensity scaling, PlotBrukerSpectrum, and ToSignal round-trip \
+verification."
+}], "Item",ExpressionUUID->"89c4c09f-13da-2f40-8b80-724724b626f7"],
+
+Cell[TextData[{
+ "Signals 2D Companion: ",
+ StyleBox[ButtonBox["02_2D_NMR_Simulation_Processing_and_MAS.nb",
+  BaseStyle->"Hyperlink",
+  Evaluator->Automatic,
+  Method->"Preemptive",
+  ButtonFunction:>NotebookOpen[
+    FileNameJoin[{
+      ParentDirectory[
+       ParentDirectory[
+        NotebookDirectory[]]], "Signals", "Notebooks", 
+      "02_2D_NMR_Simulation_Processing_and_MAS.nb"}]]], "Hyperlink"],
+ " -- High-performance 2D NMR (Signal2D), hypercomplex processing, Liouville \
+NOESY, compiled powders, and MAS COMPUTE2D with CarouselAverage."
+}], "Item",ExpressionUUID->"e71194cb-af2f-4140-bd37-d725a5ef3da6"]
+}, Open  ]]
+}, Open  ]]
+},
+WindowSize->{1100.25, 780.75},
+WindowMargins->{{163.5, Automatic}, {Automatic, 0}},
+FrontEndVersion->"14.3 for Microsoft Windows (64-bit) (July 8, 2025)",
+StyleDefinitions->"Default.nb",
+ExpressionUUID->"c39af658-1855-f245-8af6-05668df21e6a"
+]
+(* End of Notebook Content *)
+
+(* Internal cache information *)
+(*CellTagsOutline
+CellTagsIndex->{}
+*)
+(*CellTagsIndex
+CellTagsIndex->{}
+*)
+(*NotebookFileOutline
+Notebook[{
+Cell[CellGroupData[{
+Cell[576, 22, 170, 3, 70, "Title",ExpressionUUID->"912669c4-e98e-1144-a991-d99040c48869"],
+Cell[749, 27, 309, 4, 70, "Subtitle",ExpressionUUID->"6fa0fe2a-45e7-1f4e-8e9b-755cf9a67a22"],
+Cell[CellGroupData[{
+Cell[1083, 35, 105, 0, 70, "Section",ExpressionUUID->"8eec3315-da66-7d49-955f-b32c07f85b05"],
+Cell[1191, 37, 564, 9, 70, "Text",ExpressionUUID->"2b9d12d5-87a8-c544-8cf7-41c5e7a406ac"],
+Cell[1758, 48, 262, 4, 70, "Text",ExpressionUUID->"3c3aaa1c-bbbb-a243-ad8b-934d08a74d4e"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[2057, 57, 98, 0, 70, "Section",ExpressionUUID->"6b8c13cb-c9ab-a540-91c7-5d634289bf68"],
+Cell[2158, 59, 305, 5, 70, "Text",ExpressionUUID->"9a5fdeef-fb1f-084a-ad30-1169aceeb58a"],
+Cell[2466, 66, 2406, 60, 70, "Input",ExpressionUUID->"47cfc2ec-8447-d34f-b5a7-a9b00525783c"],
+Cell[4875, 128, 1292, 28, 70, "Input",ExpressionUUID->"94139b3b-cfcc-d74a-a1f0-1d99f81000e0"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[6204, 161, 123, 0, 70, "Section",ExpressionUUID->"79062afe-c11d-4b4a-a4d3-9fc093643674"],
+Cell[6330, 163, 605, 14, 70, "Item",ExpressionUUID->"c687231c-26e3-d444-baf8-f1e0014ef4f0"],
+Cell[6938, 179, 620, 14, 70, "Item",ExpressionUUID->"f0a21383-ba76-044c-b36c-882b2ab982ae"],
+Cell[7561, 195, 639, 15, 70, "Item",ExpressionUUID->"bb565472-12ed-4041-88a6-1fda31884faf"],
+Cell[8203, 212, 636, 15, 70, "Item",ExpressionUUID->"89c4c09f-13da-2f40-8b80-724724b626f7"],
+Cell[8842, 229, 618, 14, 70, "Item",ExpressionUUID->"e71194cb-af2f-4140-bd37-d725a5ef3da6"]
+}, Open  ]]
+}, Open  ]]
+}
+]
+*)
+
+(* End of internal cache information *)

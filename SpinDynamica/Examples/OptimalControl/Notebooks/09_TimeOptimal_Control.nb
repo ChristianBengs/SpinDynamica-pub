@@ -1,0 +1,1051 @@
+(* Content-type: application/vnd.wolfram.mathematica *)
+
+(*** Wolfram Notebook File ***)
+(* http://www.wolfram.com/nb *)
+
+(* CreatedBy='Wolfram 14.3' *)
+
+(*CacheID: 234*)
+(* Internal cache information:
+NotebookFileLineBreakTest
+NotebookFileLineBreakTest
+NotebookDataPosition[       154,          7]
+NotebookDataLength[     44912,       1042]
+NotebookOptionsPosition[     41382,        983]
+NotebookOutlinePosition[     41729,        998]
+CellTagsIndexPosition[     41686,        995]
+WindowFrame->Normal*)
+
+(* Beginning of Notebook Content *)
+Notebook[{
+Cell["09. Time-Optimal Control and Pontryagin Diagnostics", "Title",ExpressionUUID->"f5c298ad-e8da-cb4d-b4d2-18bd2786394a"],
+
+Cell["\<\
+Quantum speed limits, numerical Time-Optimal Pulse (TOP) curves, joint \
+control-and-duration Augmented Lagrangian solvers, robust ensemble duration \
+trade-offs, and sub-slice Pontryagin Maximum Principle switching-function \
+diagnostics.\
+\>", "Subtitle",ExpressionUUID->"829b8f6c-b6fd-a048-8874-0db3afd87b6f"],
+
+Cell[CellGroupData[{
+
+Cell["0. Setup and Loading SpinDynamica", "Section",ExpressionUUID->"1dc47474-2c37-ac44-b99c-dff8d49785e5"],
+
+Cell["\<\
+Add the SpinDynamica package directory to $Path by searching upward from the \
+notebook directory and load SpinDynamica`. All six OptimalControl` \
+subpackages load automatically. Reuses \
+Examples/OptimalControl/Example6_TimeOptimalControl.wls and \
+Example7_RobustTimeOptimalEnsemble.wls (Manual Chapter 32).\
+\>", "Text",ExpressionUUID->"11c81df6-d79d-7648-9dfd-a82f5af092ac"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"Module", "[", 
+   RowBox[{
+    RowBox[{"{", 
+     RowBox[{
+      RowBox[{"dir", " ", "=", " ", 
+       RowBox[{"Quiet", "[", 
+        RowBox[{"Check", "[", 
+         RowBox[{
+          RowBox[{"NotebookDirectory", "[", "]"}], ",", " ", 
+          RowBox[{"Directory", "[", "]"}]}], "]"}], "]"}]}], ",", " ", 
+      RowBox[{"found", " ", "=", " ", "None"}]}], "}"}], ",", "\n", "  ", 
+    RowBox[{
+     RowBox[{"Do", "[", 
+      RowBox[{
+       RowBox[{
+        RowBox[{"If", "[", 
+         RowBox[{
+          RowBox[{"FileExistsQ", "[", 
+           RowBox[{"FileNameJoin", "[", 
+            RowBox[{"{", 
+             RowBox[{
+             "dir", ",", " ", "\"\<SpinDynamica\>\"", ",", 
+              " ", "\"\<SpinDynamica.m\>\""}], "}"}], "]"}], "]"}], ",", "\n",
+           "      ", 
+          RowBox[{
+           RowBox[{"found", " ", "=", " ", 
+            RowBox[{"FileNameJoin", "[", 
+             RowBox[{"{", 
+              RowBox[{"dir", ",", " ", "\"\<SpinDynamica\>\""}], "}"}], 
+             "]"}]}], ";", " ", 
+           RowBox[{"Break", "[", "]"}]}]}], "]"}], ";", "\n", "    ", 
+        RowBox[{"dir", " ", "=", " ", 
+         RowBox[{"ParentDirectory", "[", "dir", "]"}]}]}], ",", " ", 
+       RowBox[{"{", "6", "}"}]}], "]"}], ";", "\n", "  ", 
+     RowBox[{"If", "[", 
+      RowBox[{
+       RowBox[{
+        RowBox[{"found", " ", "===", " ", "None"}], " ", "&&", " ", 
+        RowBox[{"FileExistsQ", "[", 
+         RowBox[{"FileNameJoin", "[", 
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"Directory", "[", "]"}], ",", " ", "\"\<SpinDynamica\>\"",
+             ",", " ", "\"\<SpinDynamica.m\>\""}], "}"}], "]"}], "]"}]}], ",",
+        "\n", "    ", 
+       RowBox[{"found", " ", "=", " ", 
+        RowBox[{"FileNameJoin", "[", 
+         RowBox[{"{", 
+          RowBox[{
+           RowBox[{"Directory", "[", "]"}], ",", 
+           " ", "\"\<SpinDynamica\>\""}], "}"}], "]"}]}]}], "]"}], ";", "\n", 
+     "  ", 
+     RowBox[{"If", "[", 
+      RowBox[{
+       RowBox[{
+        RowBox[{"StringQ", "[", "found", "]"}], " ", "&&", " ", 
+        RowBox[{"!", 
+         RowBox[{"MemberQ", "[", 
+          RowBox[{"$Path", ",", " ", "found"}], "]"}]}]}], ",", " ", 
+       RowBox[{"PrependTo", "[", 
+        RowBox[{"$Path", ",", " ", "found"}], "]"}]}], "]"}], ";"}]}], "\n", 
+   "]"}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"Needs", "[", "\"\<SpinDynamica`\>\"", "]"}], ";"}], "\n", 
+ RowBox[{"<|", 
+  RowBox[{
+   RowBox[{"\"\<Version\>\"", " ", "->", " ", "$SpinDynamicaVersion"}], ",", 
+   " ", 
+   RowBox[{"\"\<OptimalControlContexts\>\"", " ", "->", " ", 
+    RowBox[{"Select", "[", 
+     RowBox[{"$Packages", ",", " ", 
+      RowBox[{
+       RowBox[{"StringStartsQ", "[", 
+        RowBox[{"#", ",", " ", "\"\<OptimalControl`\>\""}], "]"}], " ", 
+       "&"}]}], "]"}]}]}], "|>"}]}], "Input",ExpressionUUID->"56268d60-8e45-\
+804f-a844-1dba89e42ab4"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Introduction", "Section",ExpressionUUID->"077fdc07-7638-e04f-b90c-c1218a60fc27"],
+
+Cell["\<\
+In magnetic resonance experiments limited by T1/T2 relaxation or RF probe \
+heating, finding the shortest pulse duration that reaches a required fidelity \
+threshold is often critical. OptimalControl`TimeOptimal` automates this \
+search on top of SpinDynamica's fast GRAPE kernels and analytical duration \
+derivatives.\
+\>", "Text",ExpressionUUID->"11075449-487a-164c-9c28-2420c35da825"],
+
+Cell["\<\
+Map numerical Time-Optimal Pulse (TOP) curves F*(T) and locate the shortest \
+numerically feasible duration with Progressive, Joint, JointPenalized, and \
+Hybrid strategies.\
+\>", "Item",ExpressionUUID->"a81cff9a-de3a-7148-87a7-479f1a58917c"],
+
+Cell["\<\
+Benchmark numerical speed limits against exact analytical bounds T_min(F) = \
+ArcSin[Sqrt[F]] / (Pi nu_max).\
+\>", "Item",ExpressionUUID->"2c5cc94b-44a5-314f-a30b-b5f3d11946b9"],
+
+Cell["\<\
+Explore the cost of robustness on 1D broadband inversion ensembles under \
+Mean, SoftMin, and worst-case Minimum criteria with out-of-sample \
+ValidationEnsemble verification.\
+\>", "Item",ExpressionUUID->"aa968546-78e7-8e47-9080-2cf53250f98d"],
+
+Cell["\<\
+Inspect continuous sub-slice Pontryagin Maximum Principle (PMP) switching \
+functions s_k(t) via VerifyOptimalControlStationarity and \
+PlotSwitchingFunctions.\
+\>", "Item",ExpressionUUID->"533f06ed-b19f-5a41-862b-e1128904115c"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Mathematical Background", "Section",ExpressionUUID->"00d6bd7f-b3b9-1147-963e-ae6f091f0605"],
+
+Cell["\<\
+Given admissible controls u in U, define F*(T) = max_u F(u, T). \
+TimeOptimalControlOptimize seeks T* = inf {T > 0 : F*(T) >= F_target}. Method \
+-> \"Progressive\" brackets T* via geometric contraction and safeguarded \
+bisection with NormalizedTime or AreaPreserving warm starts. Method -> \
+\"Joint\" uses exact chain-rule duration sensitivities (OptimizeDurations -> \
+\"Total\") inside a single-run C1 Augmented Lagrangian maximisation of \
+-T/T_ref - P_smooth - (max(0, mu - rho(F - F_target))^2 - mu^2)/(2 rho).\
+\>", "Text",ExpressionUUID->"a24f714e-1b48-6849-a5b7-73961993c962"],
+
+Cell["\<\
+At fixed T, VerifyOptimalControlStationarity evaluates continuous switching \
+functions s_k(t) across StationaritySubdivisions per slice and measures \
+complementarity residuals. Explicit scope note: numerical convergence or \
+small PMP residuals verify local first-order constrained stationarity within \
+the chosen slice grid and restart budget, not mathematical proof of global or \
+physical time optimality.\
+\>", "Text",ExpressionUUID->"c7a6b205-016d-104e-a5dc-09e4fd81e455"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Worked Example", "Section",ExpressionUUID->"d58ec96a-9515-d14c-bd53-1335afd4bef6"],
+
+Cell["\<\
+Solve on-resonance spin-1/2 state inversion (|nu_x| <= 500 Hz, F_target = \
+0.999, exact analytical speed limit 0.979865 ms) with Method -> \"Hybrid\", \
+scan the TOP curve across [0.65 .. 1.40] ms, and run PMP switching-function \
+verification:\
+\>", "Text",ExpressionUUID->"094fb9e4-ff64-7f4f-adea-ded222143831"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"SetSpinSystem", "[", "1", "]"}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"b1", " ", "=", " ", 
+   RowBox[{"ZeemanBasis", "[", "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"ks1", " ", "=", " ", 
+   RowBox[{"BasisKets", "[", "b1", "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"pInv", " ", "=", " ", 
+   RowBox[{"OptimalControlProblem", "[", 
+    RowBox[{"0", ",", " ", 
+     RowBox[{"{", 
+      RowBox[{"opI", "[", 
+       RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}], "}"}], ",", " ", 
+     RowBox[{"StateTarget", "[", 
+      RowBox[{
+       RowBox[{"ks1", "[", 
+        RowBox[{"[", "1", "]"}], "]"}], " ", "->", " ", 
+       RowBox[{"ks1", "[", 
+        RowBox[{"[", "2", "]"}], "]"}]}], "]"}], ",", " ", 
+     RowBox[{"{", 
+      RowBox[{"0.002", ",", " ", "20"}], "}"}], ",", "\n", "  ", 
+     RowBox[{"AmplitudeBound", " ", "->", " ", "500."}], ",", " ", 
+     RowBox[{"FrequencyUnits", " ", "->", " ", "\"\<Hz\>\""}], ",", " ", 
+     RowBox[{"ControlUnits", " ", "->", " ", "\"\<Hz\>\""}]}], "]"}]}], 
+  ";"}], "\n", 
+ RowBox[{
+  RowBox[{"tExactMs", " ", "=", " ", 
+   RowBox[{"1000.", " ", "*", " ", 
+    RowBox[{"N", "[", 
+     RowBox[{
+      RowBox[{"ArcSin", "[", 
+       RowBox[{"Sqrt", "[", "0.999", "]"}], "]"}], " ", "/", " ", 
+      RowBox[{"(", 
+       RowBox[{"Pi", " ", "*", " ", "500."}], ")"}]}], "]"}]}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"resHyb", " ", "=", " ", 
+   RowBox[{"TimeOptimalControlOptimize", "[", 
+    RowBox[{"pInv", ",", " ", 
+     RowBox[{"Method", " ", "->", " ", "\"\<Hybrid\>\""}], ",", " ", 
+     RowBox[{"TargetFidelity", " ", "->", " ", "0.999"}], ",", "\n", "  ", 
+     RowBox[{"DurationTolerance", " ", "->", " ", "2.*^-6"}], ",", " ", 
+     RowBox[{"RandomSeed", " ", "->", " ", "11"}]}], "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"curveInv", " ", "=", " ", 
+   RowBox[{"TimeOptimalPulseCurve", "[", 
+    RowBox[{"pInv", ",", " ", 
+     RowBox[{"{", 
+      RowBox[{
+      "0.00065", ",", " ", "0.00080", ",", " ", "0.00090", ",", " ", 
+       "0.00095", ",", " ", "0.000985", ",", " ", "0.00105", ",", " ", 
+       "0.00140"}], "}"}], ",", "\n", "  ", 
+     RowBox[{"TargetFidelity", " ", "->", " ", "0.999"}], ",", " ", 
+     RowBox[{"RandomSeed", " ", "->", " ", "31"}]}], "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"diagInv", " ", "=", " ", 
+   RowBox[{"VerifyOptimalControlStationarity", "[", 
+    RowBox[{
+     RowBox[{"resHyb", "[", "\"\<ShortestFeasibleResult\>\"", "]"}], ",", " ", 
+     RowBox[{"StationaritySubdivisions", " ", "->", " ", "8"}]}], "]"}]}], 
+  ";"}], "\n", 
+ RowBox[{
+  RowBox[{"simInv", " ", "=", " ", 
+   RowBox[{"VerifyOptimalControlSimulation", "[", 
+    RowBox[{"resHyb", "[", "\"\<ShortestFeasibleResult\>\"", "]"}], "]"}]}], 
+  ";"}], "\n", 
+ RowBox[{"<|", 
+  RowBox[{
+   RowBox[{"\"\<AnalyticalLimitMs\>\"", " ", "->", " ", "tExactMs"}], ",", 
+   " ", 
+   RowBox[{"\"\<HybridTStarMs\>\"", " ", "->", " ", 
+    RowBox[{"1000.", " ", "*", " ", 
+     RowBox[{"resHyb", "[", "\"\<ShortestFeasibleDuration\>\"", "]"}]}]}], ",",
+    "\n", "  ", 
+   RowBox[{"\"\<AchievedFidelity\>\"", " ", "->", " ", 
+    RowBox[{"resHyb", "[", "\"\<AchievedFidelity\>\"", "]"}]}], ",", " ", 
+   RowBox[{"\"\<SDMatch\>\"", " ", "->", " ", 
+    RowBox[{"simInv", "[", "\"\<FidelityMatchQ\>\"", "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<PMP_QuadErr\>\"", " ", "->", " ", 
+    RowBox[{"diagInv", "[", "\"\<QuadratureGradientError\>\"", "]"}]}], ",", 
+   " ", 
+   RowBox[{"\"\<PMP_RelInt\>\"", " ", "->", " ", 
+    RowBox[{"diagInv", "[", "\"\<RelativeIntegratedResidual\>\"", "]"}]}], ",",
+    "\n", "  ", 
+   RowBox[{"\"\<PMP_SatQ\>\"", " ", "->", " ", 
+    RowBox[{"diagInv", "[", "\"\<StationaritySatisfiedQ\>\"", "]"}]}]}], 
+  "|>"}]}], "Input",ExpressionUUID->"d53330c3-9cce-9c48-9439-531e359fd160"],
+
+Cell["\<\
+Visualise the log-infidelity TOP curve alongside the 3-panel Pontryagin \
+switching-function diagnostic:\
+\>", "Text",ExpressionUUID->"6f2cffdb-80d4-8844-9efd-2c7b6e57e532"],
+
+Cell[BoxData[
+ RowBox[{"Row", "[", 
+  RowBox[{"{", "\n", "  ", 
+   RowBox[{
+    RowBox[{"PlotTimeOptimalPulseCurve", "[", 
+     RowBox[{"curveInv", ",", " ", 
+      RowBox[{"Method", " ", "->", " ", "\"\<Infidelity\>\""}], ",", " ", 
+      RowBox[{"ImageSize", " ", "->", " ", "350"}]}], "]"}], ",", "\n", "  ", 
+    
+    RowBox[{"PlotSwitchingFunctions", "[", 
+     RowBox[{"diagInv", ",", " ", 
+      RowBox[{"ImageSize", " ", "->", " ", "350"}]}], "]"}]}], "\n", "}"}], 
+  "]"}]], "Input",ExpressionUUID->"a2bbb249-f131-4641-a12b-7ced9c38b94c"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Interactive Exploration", "Section",ExpressionUUID->"3a018b16-66b6-a046-a789-1e479c745ff4"],
+
+Cell["\<\
+Lab 9A compares search strategies (Progressive, Joint AL, Hybrid), target \
+fidelity, and peak RF amplitude on single-spin inversion, reporting \
+speed-limit gap and live PMP switching diagnostics on demand via queued \
+evaluation.\
+\>", "Text",ExpressionUUID->"6e2c1a28-bef2-6f4d-b7b8-fef839a8f70b"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{
+   RowBox[{
+    RowBox[{"runLab9A", "[", 
+     RowBox[{"method_String", ",", " ", 
+      RowBox[{"targetFid_", "?", "NumericQ"}], ",", " ", 
+      RowBox[{"ampBoundHz_", "?", "NumericQ"}]}], "]"}], " ", ":=", " ", 
+    RowBox[{"Module", "[", "\n", "  ", 
+     RowBox[{
+      RowBox[{"{", 
+       RowBox[{
+       "b1", ",", " ", "ks1", ",", " ", "prob", ",", " ", "res", ",", " ", 
+        "sim", ",", " ", "bestR", ",", " ", "stat", ",", " ", "tExact"}], 
+       "}"}], ",", "\n", "  ", 
+      RowBox[{
+       RowBox[{"SetSpinSystem", "[", "1", "]"}], ";", " ", 
+       RowBox[{"b1", " ", "=", " ", 
+        RowBox[{"ZeemanBasis", "[", "]"}]}], ";", " ", 
+       RowBox[{"ks1", " ", "=", " ", 
+        RowBox[{"BasisKets", "[", "b1", "]"}]}], ";", "\n", "  ", 
+       RowBox[{"prob", " ", "=", " ", 
+        RowBox[{"OptimalControlProblem", "[", 
+         RowBox[{"0", ",", " ", 
+          RowBox[{"{", 
+           RowBox[{"opI", "[", 
+            RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}], "}"}], ",", " ", 
+          RowBox[{"StateTarget", "[", 
+           RowBox[{
+            RowBox[{"ks1", "[", 
+             RowBox[{"[", "1", "]"}], "]"}], " ", "->", " ", 
+            RowBox[{"ks1", "[", 
+             RowBox[{"[", "2", "]"}], "]"}]}], "]"}], ",", " ", 
+          RowBox[{"{", 
+           RowBox[{"0.0025", ",", " ", "20"}], "}"}], ",", "\n", "    ", 
+          RowBox[{"AmplitudeBound", " ", "->", " ", 
+           RowBox[{"N", "[", "ampBoundHz", "]"}]}], ",", " ", 
+          RowBox[{"FrequencyUnits", " ", "->", " ", "\"\<Hz\>\""}], ",", " ", 
+          
+          RowBox[{"ControlUnits", " ", "->", " ", "\"\<Hz\>\""}]}], "]"}]}], ";",
+        "\n", "  ", 
+       RowBox[{"res", " ", "=", " ", 
+        RowBox[{"TimeOptimalControlOptimize", "[", 
+         RowBox[{"prob", ",", " ", 
+          RowBox[{"Method", " ", "->", " ", "method"}], ",", " ", 
+          RowBox[{"TargetFidelity", " ", "->", " ", 
+           RowBox[{"N", "[", "targetFid", "]"}]}], ",", "\n", "    ", 
+          RowBox[{"DurationTolerance", " ", "->", " ", "2.*^-6"}], ",", " ", 
+          RowBox[{"RandomSeed", " ", "->", " ", "11"}]}], "]"}]}], ";", "\n", 
+       "  ", 
+       RowBox[{"bestR", " ", "=", " ", 
+        RowBox[{"If", "[", 
+         RowBox[{
+          RowBox[{"MatchQ", "[", 
+           RowBox[{
+            RowBox[{"res", "[", "\"\<ShortestFeasibleResult\>\"", "]"}], ",", 
+            " ", "_OptimalControlResult"}], "]"}], ",", " ", 
+          RowBox[{"res", "[", "\"\<ShortestFeasibleResult\>\"", "]"}], ",", 
+          " ", 
+          RowBox[{"res", "[", "\"\<BestResult\>\"", "]"}]}], "]"}]}], ";", 
+       "\n", "  ", 
+       RowBox[{"sim", " ", "=", " ", 
+        RowBox[{"VerifyOptimalControlSimulation", "[", "bestR", "]"}]}], ";", 
+       "\n", "  ", 
+       RowBox[{"stat", " ", "=", " ", 
+        RowBox[{"VerifyOptimalControlStationarity", "[", 
+         RowBox[{"bestR", ",", " ", 
+          RowBox[{"StationaritySubdivisions", " ", "->", " ", "8"}]}], 
+         "]"}]}], ";", "\n", "  ", 
+       RowBox[{"tExact", " ", "=", " ", 
+        RowBox[{"N", "[", 
+         RowBox[{
+          RowBox[{"ArcSin", "[", 
+           RowBox[{"Sqrt", "[", "targetFid", "]"}], "]"}], " ", "/", " ", 
+          RowBox[{"(", 
+           RowBox[{"Pi", " ", "*", " ", "ampBoundHz"}], ")"}]}], "]"}]}], ";",
+        "\n", "  ", 
+       RowBox[{"<|", 
+        RowBox[{
+         RowBox[{"\"\<Result\>\"", " ", "->", " ", "res"}], ",", " ", 
+         RowBox[{"\"\<Stat\>\"", " ", "->", " ", "stat"}], ",", " ", 
+         RowBox[{"\"\<Sim\>\"", " ", "->", " ", "sim"}], ",", " ", 
+         RowBox[{"\"\<ExactMs\>\"", " ", "->", " ", 
+          RowBox[{"1000.", " ", "*", " ", "tExact"}]}], ",", " ", 
+         RowBox[{"\"\<Method\>\"", " ", "->", " ", "method"}], ",", " ", 
+         RowBox[{"\"\<Target\>\"", " ", "->", " ", "targetFid"}]}], 
+        "|>"}]}]}], "\n", "]"}]}], ";"}], "\n"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{
+    RowBox[{"renderLab9A", "[", "d_Association", "]"}], " ", ":=", " ", 
+    RowBox[{"Module", "[", 
+     RowBox[{
+      RowBox[{"{", 
+       RowBox[{
+        RowBox[{"res", " ", "=", " ", 
+         RowBox[{"d", "[", "\"\<Result\>\"", "]"}]}], ",", " ", 
+        RowBox[{"st", " ", "=", " ", 
+         RowBox[{"d", "[", "\"\<Stat\>\"", "]"}]}]}], "}"}], ",", "\n", "  ", 
+      
+      RowBox[{"Column", "[", 
+       RowBox[{"{", "\n", "    ", 
+        RowBox[{
+         RowBox[{"Panel", "[", 
+          RowBox[{"Row", "[", 
+           RowBox[{"{", "\n", "      ", 
+            RowBox[{"\"\<Method: \>\"", ",", " ", 
+             RowBox[{"Style", "[", 
+              RowBox[{
+               RowBox[{"d", "[", "\"\<Method\>\"", "]"}], ",", " ", "Bold"}], 
+              "]"}], ",", "\n", "      ", "\"\<   Exact Limit = \>\"", ",", 
+             " ", 
+             RowBox[{"NumberForm", "[", 
+              RowBox[{
+               RowBox[{"d", "[", "\"\<ExactMs\>\"", "]"}], ",", " ", "5"}], 
+              "]"}], ",", " ", "\"\< ms\>\"", ",", "\n", 
+             "      ", "\"\<   T* = \>\"", ",", " ", 
+             RowBox[{"If", "[", 
+              RowBox[{
+               RowBox[{"NumericQ", "[", 
+                RowBox[{"res", "[", "\"\<ShortestFeasibleDuration\>\"", "]"}],
+                 "]"}], ",", " ", 
+               RowBox[{
+                RowBox[{"ToString", "[", 
+                 RowBox[{"NumberForm", "[", 
+                  RowBox[{
+                   RowBox[{"1000.", " ", "*", " ", 
+                    RowBox[{
+                    "res", "[", "\"\<ShortestFeasibleDuration\>\"", "]"}]}], ",",
+                    " ", "5"}], "]"}], "]"}], " ", "<>", " ", "\"\< ms\>\""}],
+                ",", " ", "\"\<None\>\""}], "]"}], ",", "\n", 
+             "      ", "\"\<   F = \>\"", ",", " ", 
+             RowBox[{"NumberForm", "[", 
+              RowBox[{
+               RowBox[{"res", "[", "\"\<AchievedFidelity\>\"", "]"}], ",", 
+               " ", "6"}], "]"}], ",", "\n", 
+             "      ", "\"\<   PMP SatQ = \>\"", ",", " ", 
+             RowBox[{"st", "[", "\"\<StationaritySatisfiedQ\>\"", "]"}], ",", 
+             "\n", "      ", "\"\<   SDMatch = \>\"", ",", " ", 
+             RowBox[{
+              RowBox[{"d", "[", "\"\<Sim\>\"", "]"}], 
+              "[", "\"\<FidelityMatchQ\>\"", "]"}]}], "\n", "    ", "}"}], 
+           "]"}], "]"}], ",", "\n", "    ", 
+         RowBox[{"Row", "[", 
+          RowBox[{"{", "\n", "      ", 
+           RowBox[{
+            RowBox[{"PlotTimeOptimalPulseCurve", "[", 
+             RowBox[{"res", ",", " ", 
+              RowBox[{"Method", " ", "->", " ", "\"\<ShortestFeasible\>\""}], 
+              ",", " ", 
+              RowBox[{"ImageSize", " ", "->", " ", "340"}]}], "]"}], ",", 
+            "\n", "      ", 
+            RowBox[{"PlotSwitchingFunctions", "[", 
+             RowBox[{"st", ",", " ", 
+              RowBox[{"ImageSize", " ", "->", " ", "340"}]}], "]"}]}], "\n", 
+           "    ", "}"}], "]"}]}], "\n", "  ", "}"}], "]"}]}], "\n", "]"}]}], 
+   ";"}], "\n"}], "\n", 
+ RowBox[{
+  RowBox[{"lab9ADefault", " ", "=", " ", 
+   RowBox[{"runLab9A", "[", 
+    RowBox[{"\"\<Hybrid\>\"", ",", " ", "0.999", ",", " ", "500."}], "]"}]}], 
+  ";"}], "\n", 
+ RowBox[{"<|", 
+  RowBox[{
+   RowBox[{"\"\<TStarMs\>\"", " ", "->", " ", 
+    RowBox[{"1000.", " ", "*", " ", 
+     RowBox[{
+      RowBox[{"lab9ADefault", "[", "\"\<Result\>\"", "]"}], 
+      "[", "\"\<ShortestFeasibleDuration\>\"", "]"}]}]}], ",", " ", 
+   RowBox[{"\"\<SatQ\>\"", " ", "->", " ", 
+    RowBox[{
+     RowBox[{"lab9ADefault", "[", "\"\<Stat\>\"", "]"}], 
+     "[", "\"\<StationaritySatisfiedQ\>\"", "]"}]}]}], "|>"}]}], "Input",Expre\
+ssionUUID->"e7520dac-4ce0-6148-9b86-1cf1494342e4"],
+
+Cell[BoxData[
+ RowBox[{"DynamicModule", "[", 
+  RowBox[{
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"meth", " ", "=", " ", "\"\<Hybrid\>\""}], ",", " ", 
+     RowBox[{"fTar", " ", "=", " ", "0.999"}], ",", " ", 
+     RowBox[{"ampHz", " ", "=", " ", "500."}], ",", " ", 
+     RowBox[{"data", " ", "=", " ", "lab9ADefault"}]}], "}"}], ",", "\n", 
+   "  ", 
+   RowBox[{"Panel", "[", 
+    RowBox[{"Column", "[", 
+     RowBox[{"{", "\n", "    ", 
+      RowBox[{
+       RowBox[{"Grid", "[", 
+        RowBox[{
+         RowBox[{"{", "\n", "      ", 
+          RowBox[{
+           RowBox[{"{", 
+            RowBox[{"\"\<Search Method\>\"", ",", " ", 
+             RowBox[{"SetterBar", "[", 
+              RowBox[{
+               RowBox[{"Dynamic", "[", "meth", "]"}], ",", " ", 
+               RowBox[{"{", 
+                
+                RowBox[{"\"\<Progressive\>\"", ",", " ", "\"\<Joint\>\"", ",",
+                  " ", "\"\<Hybrid\>\""}], "}"}]}], "]"}]}], "}"}], ",", "\n",
+            "      ", 
+           RowBox[{"{", 
+            RowBox[{"\"\<Target Fidelity\>\"", ",", " ", 
+             RowBox[{"SetterBar", "[", 
+              RowBox[{
+               RowBox[{"Dynamic", "[", "fTar", "]"}], ",", " ", 
+               RowBox[{"{", 
+                RowBox[{"0.99", ",", " ", "0.999", ",", " ", "0.9999"}], 
+                "}"}]}], "]"}]}], "}"}], ",", "\n", "      ", 
+           RowBox[{"{", 
+            RowBox[{"\"\<RF Amplitude Bound (Hz)\>\"", ",", " ", 
+             RowBox[{"SetterBar", "[", 
+              RowBox[{
+               RowBox[{"Dynamic", "[", "ampHz", "]"}], ",", " ", 
+               RowBox[{"{", 
+                RowBox[{"300.", ",", " ", "500.", ",", " ", "800."}], "}"}]}],
+               "]"}]}], "}"}]}], "\n", "    ", "}"}], ",", " ", 
+         RowBox[{"Alignment", " ", "->", " ", "Left"}]}], "]"}], ",", "\n", 
+       "    ", 
+       RowBox[{"Button", "[", 
+        RowBox[{"\"\<Run Time-Optimal Search\>\"", ",", " ", 
+         RowBox[{"data", " ", "=", " ", 
+          RowBox[{"runLab9A", "[", 
+           RowBox[{"meth", ",", " ", "fTar", ",", " ", "ampHz"}], "]"}]}], ",",
+          " ", 
+         RowBox[{"Method", " ", "->", " ", "\"\<Queued\>\""}]}], "]"}], ",", 
+       "\n", "    ", 
+       RowBox[{"Dynamic", "[", 
+        RowBox[{"renderLab9A", "[", "data", "]"}], "]"}]}], "\n", "  ", "}"}],
+      "]"}], "]"}]}], "\n", "]"}]], "Input",ExpressionUUID->"1107224c-5acf-\
+fc46-9733-74498e550d5c"],
+
+Cell["\<\
+Lab 9B compares Mean, SoftMin, and strict worst-case Minimum feasibility \
+criteria across a 1D broadband offset ensemble validated out-of-sample on a \
+33-point grid:\
+\>", "Text",ExpressionUUID->"7f4559c5-ab74-5749-9aae-7443c4457e1e"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{
+   RowBox[{
+    RowBox[{"runLab9B", "[", 
+     RowBox[{"crit_String", ",", " ", 
+      RowBox[{"bwKHz_", "?", "NumericQ"}], ",", " ", 
+      RowBox[{"rfKHz_", "?", "NumericQ"}]}], "]"}], " ", ":=", " ", 
+    RowBox[{"Module", "[", "\n", "  ", 
+     RowBox[{
+      RowBox[{"{", 
+       RowBox[{
+       "b1", ",", " ", "ks1", ",", " ", "delta", ",", " ", "ensTrain", ",", 
+        " ", "ensVal", ",", " ", "aggSpec", ",", " ", "res", ",", " ", 
+        "valRes", ",", " ", "bestR", ",", " ", "valEval"}], "}"}], ",", "\n", 
+      "  ", 
+      RowBox[{
+       RowBox[{"SetSpinSystem", "[", "1", "]"}], ";", " ", 
+       RowBox[{"b1", " ", "=", " ", 
+        RowBox[{"ZeemanBasis", "[", "]"}]}], ";", " ", 
+       RowBox[{"ks1", " ", "=", " ", 
+        RowBox[{"BasisKets", "[", "b1", "]"}]}], ";", "\n", "  ", 
+       RowBox[{"aggSpec", " ", "=", " ", 
+        RowBox[{"If", "[", 
+         RowBox[{
+          RowBox[{"crit", " ", "===", " ", "\"\<Mean\>\""}], ",", 
+          " ", "\"\<Mean\>\"", ",", " ", 
+          RowBox[{"{", 
+           RowBox[{"\"\<SoftMin\>\"", ",", " ", "20."}], "}"}]}], "]"}]}], ";",
+        "\n", "  ", 
+       RowBox[{"ensTrain", " ", "=", " ", 
+        RowBox[{"OptimalControlEnsemble", "[", 
+         RowBox[{
+          RowBox[{"delta", " ", "*", " ", 
+           RowBox[{"opI", "[", 
+            RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}], ",", " ", 
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"opI", "[", 
+             RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}], ",", " ", 
+            RowBox[{"opI", "[", 
+             RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}], "}"}], ",", "\n", 
+          "    ", 
+          RowBox[{"StateTarget", "[", 
+           RowBox[{
+            RowBox[{"ks1", "[", 
+             RowBox[{"[", "1", "]"}], "]"}], " ", "->", " ", 
+            RowBox[{"ks1", "[", 
+             RowBox[{"[", "2", "]"}], "]"}]}], "]"}], ",", " ", 
+          RowBox[{"{", 
+           RowBox[{"0.0005", ",", " ", "16"}], "}"}], ",", "\n", "    ", 
+          RowBox[{"EnsembleParameters", " ", "->", " ", 
+           RowBox[{"{", 
+            RowBox[{"delta", " ", "->", " ", 
+             RowBox[{"Subdivide", "[", 
+              RowBox[{
+               RowBox[{
+                RowBox[{"-", "1000."}], " ", "*", " ", 
+                RowBox[{"N", "[", "bwKHz", "]"}]}], ",", " ", 
+               RowBox[{"1000.", " ", "*", " ", 
+                RowBox[{"N", "[", "bwKHz", "]"}]}], ",", " ", "8"}], "]"}]}], 
+            "}"}]}], ",", "\n", "    ", 
+          RowBox[{"EnsembleAggregation", " ", "->", " ", "aggSpec"}], ",", 
+          " ", 
+          RowBox[{"AmplitudeNormBound", " ", "->", " ", 
+           RowBox[{"1000.", " ", "*", " ", 
+            RowBox[{"N", "[", "rfKHz", "]"}]}]}], ",", "\n", "    ", 
+          RowBox[{"FrequencyUnits", " ", "->", " ", "\"\<Hz\>\""}], ",", " ", 
+          
+          RowBox[{"ControlUnits", " ", "->", " ", "\"\<Hz\>\""}]}], "]"}]}], ";",
+        "\n", "  ", 
+       RowBox[{"ensVal", " ", "=", " ", 
+        RowBox[{"OptimalControlEnsemble", "[", 
+         RowBox[{
+          RowBox[{"delta", " ", "*", " ", 
+           RowBox[{"opI", "[", 
+            RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}], ",", " ", 
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"opI", "[", 
+             RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}], ",", " ", 
+            RowBox[{"opI", "[", 
+             RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}], "}"}], ",", "\n", 
+          "    ", 
+          RowBox[{"StateTarget", "[", 
+           RowBox[{
+            RowBox[{"ks1", "[", 
+             RowBox[{"[", "1", "]"}], "]"}], " ", "->", " ", 
+            RowBox[{"ks1", "[", 
+             RowBox[{"[", "2", "]"}], "]"}]}], "]"}], ",", " ", 
+          RowBox[{"{", 
+           RowBox[{"0.0005", ",", " ", "16"}], "}"}], ",", "\n", "    ", 
+          RowBox[{"EnsembleParameters", " ", "->", " ", 
+           RowBox[{"{", 
+            RowBox[{"delta", " ", "->", " ", 
+             RowBox[{"Subdivide", "[", 
+              RowBox[{
+               RowBox[{
+                RowBox[{"-", "1000."}], " ", "*", " ", 
+                RowBox[{"N", "[", "bwKHz", "]"}]}], ",", " ", 
+               RowBox[{"1000.", " ", "*", " ", 
+                RowBox[{"N", "[", "bwKHz", "]"}]}], ",", " ", "32"}], "]"}]}],
+             "}"}]}], ",", "\n", "    ", 
+          RowBox[{"AmplitudeNormBound", " ", "->", " ", 
+           RowBox[{"1000.", " ", "*", " ", 
+            RowBox[{"N", "[", "rfKHz", "]"}]}]}], ",", " ", 
+          RowBox[{"FrequencyUnits", " ", "->", " ", "\"\<Hz\>\""}], ",", " ", 
+          
+          RowBox[{"ControlUnits", " ", "->", " ", "\"\<Hz\>\""}]}], "]"}]}], ";",
+        "\n", "  ", 
+       RowBox[{"res", " ", "=", " ", 
+        RowBox[{"TimeOptimalControlOptimize", "[", 
+         RowBox[{"ensTrain", ",", " ", 
+          RowBox[{"Method", " ", "->", " ", "\"\<Progressive\>\""}], ",", " ", 
+          RowBox[{"FidelityCriterion", " ", "->", " ", "crit"}], ",", "\n", 
+          "    ", 
+          RowBox[{"TargetFidelity", " ", "->", " ", "0.99"}], ",", " ", 
+          RowBox[{"MinimumDuration", " ", "->", " ", "0.0001"}], ",", " ", 
+          RowBox[{"DurationTolerance", " ", "->", " ", "1.5*^-5"}], ",", "\n",
+           "    ", 
+          RowBox[{"MaxIterations", " ", "->", " ", "180"}], ",", " ", 
+          RowBox[{"ValidationEnsemble", " ", "->", " ", "ensVal"}], ",", " ", 
+          
+          RowBox[{"RandomSeed", " ", "->", " ", "101"}]}], "]"}]}], ";", "\n",
+        "  ", 
+       RowBox[{"valRes", " ", "=", " ", 
+        RowBox[{"res", "[", "\"\<ValidationResult\>\"", "]"}]}], ";", "\n", 
+       "  ", 
+       RowBox[{"bestR", " ", "=", " ", 
+        RowBox[{"If", "[", 
+         RowBox[{
+          RowBox[{"MatchQ", "[", 
+           RowBox[{
+            RowBox[{"res", "[", "\"\<ShortestFeasibleResult\>\"", "]"}], ",", 
+            " ", "_OptimalControlResult"}], "]"}], ",", " ", 
+          RowBox[{"res", "[", "\"\<ShortestFeasibleResult\>\"", "]"}], ",", 
+          " ", 
+          RowBox[{"res", "[", "\"\<BestResult\>\"", "]"}]}], "]"}]}], ";", 
+       "\n", "  ", 
+       RowBox[{"valEval", " ", "=", " ", 
+        RowBox[{"EvaluateEnsembleFidelity", "[", "\n", "    ", 
+         RowBox[{
+          RowBox[{"OptimalControlEnsemble", "[", 
+           RowBox[{
+            RowBox[{"delta", " ", "*", " ", 
+             RowBox[{"opI", "[", 
+              RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{
+              RowBox[{"opI", "[", 
+               RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}], ",", " ", 
+              RowBox[{"opI", "[", 
+               RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}], "}"}], ",", 
+            "\n", "      ", 
+            RowBox[{"StateTarget", "[", 
+             RowBox[{
+              RowBox[{"ks1", "[", 
+               RowBox[{"[", "1", "]"}], "]"}], " ", "->", " ", 
+              RowBox[{"ks1", "[", 
+               RowBox[{"[", "2", "]"}], "]"}]}], "]"}], ",", " ", 
+            RowBox[{"bestR", "[", "\"\<TimeSteps\>\"", "]"}], ",", "\n", 
+            "      ", 
+            RowBox[{"EnsembleParameters", " ", "->", " ", 
+             RowBox[{"{", 
+              RowBox[{"delta", " ", "->", " ", 
+               RowBox[{"Subdivide", "[", 
+                RowBox[{
+                 RowBox[{
+                  RowBox[{"-", "1000."}], " ", "*", " ", 
+                  RowBox[{"N", "[", "bwKHz", "]"}]}], ",", " ", 
+                 RowBox[{"1000.", " ", "*", " ", 
+                  RowBox[{"N", "[", "bwKHz", "]"}]}], ",", " ", "32"}], 
+                "]"}]}], "}"}]}], ",", "\n", "      ", 
+            RowBox[{"AmplitudeNormBound", " ", "->", " ", 
+             RowBox[{"1000.", " ", "*", " ", 
+              RowBox[{"N", "[", "rfKHz", "]"}]}]}], ",", " ", 
+            RowBox[{"FrequencyUnits", " ", "->", " ", "\"\<Hz\>\""}], ",", 
+            " ", 
+            RowBox[{"ControlUnits", " ", "->", " ", "\"\<Hz\>\""}]}], "]"}], ",",
+           "\n", "    ", 
+          RowBox[{"bestR", "[", "\"\<Controls\>\"", "]"}]}], "]"}]}], ";", 
+       "\n", "  ", 
+       RowBox[{"<|", 
+        RowBox[{
+         RowBox[{"\"\<Result\>\"", " ", "->", " ", "res"}], ",", " ", 
+         RowBox[{"\"\<ValRes\>\"", " ", "->", " ", "valRes"}], ",", " ", 
+         RowBox[{"\"\<ValEval\>\"", " ", "->", " ", "valEval"}], ",", " ", 
+         RowBox[{"\"\<Best\>\"", " ", "->", " ", "bestR"}], ",", " ", 
+         RowBox[{"\"\<Crit\>\"", " ", "->", " ", "crit"}], ",", " ", 
+         RowBox[{"\"\<BWKHz\>\"", " ", "->", " ", "bwKHz"}]}], "|>"}]}]}], 
+     "\n", "]"}]}], ";"}], "\n"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{
+    RowBox[{"renderLab9B", "[", "d_Association", "]"}], " ", ":=", " ", 
+    RowBox[{"Module", "[", 
+     RowBox[{
+      RowBox[{"{", 
+       RowBox[{
+        RowBox[{"res", " ", "=", " ", 
+         RowBox[{"d", "[", "\"\<Result\>\"", "]"}]}], ",", " ", 
+        RowBox[{"vr", " ", "=", " ", 
+         RowBox[{"d", "[", "\"\<ValRes\>\"", "]"}]}], ",", " ", 
+        RowBox[{"ve", " ", "=", " ", 
+         RowBox[{"d", "[", "\"\<ValEval\>\"", "]"}]}], ",", " ", "pts"}], 
+       "}"}], ",", "\n", "  ", 
+      RowBox[{
+       RowBox[{"pts", " ", "=", " ", 
+        RowBox[{"Subdivide", "[", 
+         RowBox[{
+          RowBox[{"-", 
+           RowBox[{"N", "[", 
+            RowBox[{"d", "[", "\"\<BWKHz\>\"", "]"}], "]"}]}], ",", " ", 
+          RowBox[{"N", "[", 
+           RowBox[{"d", "[", "\"\<BWKHz\>\"", "]"}], "]"}], ",", " ", "32"}], 
+         "]"}]}], ";", "\n", "  ", 
+       RowBox[{"Column", "[", 
+        RowBox[{"{", "\n", "    ", 
+         RowBox[{
+          RowBox[{"Panel", "[", 
+           RowBox[{"Row", "[", 
+            RowBox[{"{", "\n", "      ", 
+             RowBox[{"\"\<Criterion: \>\"", ",", " ", 
+              RowBox[{"Style", "[", 
+               RowBox[{
+                RowBox[{"d", "[", "\"\<Crit\>\"", "]"}], ",", " ", "Bold"}], 
+               "]"}], ",", "\n", "      ", "\"\<   T* = \>\"", ",", " ", 
+              RowBox[{"If", "[", 
+               RowBox[{
+                RowBox[{"NumericQ", "[", 
+                 RowBox[{
+                 "res", "[", "\"\<ShortestFeasibleDuration\>\"", "]"}], "]"}],
+                 ",", " ", 
+                RowBox[{
+                 RowBox[{"ToString", "[", 
+                  RowBox[{"NumberForm", "[", 
+                   RowBox[{
+                    RowBox[{"1000.", " ", "*", " ", 
+                    RowBox[{
+                    "res", "[", "\"\<ShortestFeasibleDuration\>\"", "]"}]}], ",",
+                     " ", "5"}], "]"}], "]"}], " ", "<>", 
+                 " ", "\"\< ms\>\""}], ",", " ", "\"\<None\>\""}], "]"}], ",",
+               "\n", "      ", "\"\<   Train Min = \>\"", ",", " ", 
+              RowBox[{"NumberForm", "[", 
+               RowBox[{
+                RowBox[{"res", "[", "\"\<MinFidelity\>\"", "]"}], ",", " ", 
+                "5"}], "]"}], ",", "\n", "      ", "\"\<   Val(33) Min = \>\"",
+               ",", " ", 
+              RowBox[{"If", "[", 
+               RowBox[{
+                RowBox[{"AssociationQ", "[", "vr", "]"}], ",", " ", 
+                RowBox[{"ToString", "[", 
+                 RowBox[{"NumberForm", "[", 
+                  RowBox[{
+                   RowBox[{"vr", "[", "\"\<MinFidelity\>\"", "]"}], ",", " ", 
+                   "5"}], "]"}], "]"}], ",", " ", "\"\<N/A\>\""}], "]"}]}], 
+             "\n", "    ", "}"}], "]"}], "]"}], ",", "\n", "    ", 
+          RowBox[{"Row", "[", 
+           RowBox[{"{", "\n", "      ", 
+            RowBox[{
+             RowBox[{"PlotOptimalControlWaveform", "[", 
+              RowBox[{
+               RowBox[{"d", "[", "\"\<Best\>\"", "]"}], ",", " ", 
+               RowBox[{"ImageSize", " ", "->", " ", "330"}]}], "]"}], ",", 
+             "\n", "      ", 
+             RowBox[{"ListLinePlot", "[", 
+              RowBox[{
+               RowBox[{"Transpose", "[", 
+                RowBox[{"{", 
+                 RowBox[{"pts", ",", " ", 
+                  RowBox[{"ve", "[", "\"\<MemberFidelities\>\"", "]"}]}], 
+                 "}"}], "]"}], ",", " ", 
+               RowBox[{"Frame", " ", "->", " ", "True"}], ",", "\n", 
+               "        ", 
+               RowBox[{"FrameLabel", " ", "->", " ", 
+                RowBox[{"{", 
+                 
+                 RowBox[{"\"\<Offset (kHz)\>\"", ",", 
+                  " ", "\"\<Validation Fidelity\>\""}], "}"}]}], ",", " ", 
+               RowBox[{"PlotRange", " ", "->", " ", 
+                RowBox[{"{", 
+                 RowBox[{"0.9", ",", " ", "1.01"}], "}"}]}], ",", "\n", 
+               "        ", 
+               RowBox[{"GridLines", " ", "->", " ", 
+                RowBox[{"{", 
+                 RowBox[{"None", ",", " ", 
+                  RowBox[{"{", 
+                   RowBox[{"{", 
+                    RowBox[{"0.99", ",", " ", "Dashed"}], "}"}], "}"}]}], 
+                 "}"}]}], ",", " ", 
+               RowBox[{"ImageSize", " ", "->", " ", "340"}]}], "]"}]}], "\n", 
+            "    ", "}"}], "]"}]}], "\n", "  ", "}"}], "]"}]}]}], "\n", 
+     "]"}]}], ";"}], "\n"}], "\n", 
+ RowBox[{
+  RowBox[{"lab9BDefault", " ", "=", " ", 
+   RowBox[{"runLab9B", "[", 
+    RowBox[{"\"\<Minimum\>\"", ",", " ", "2.", ",", " ", "5."}], "]"}]}], 
+  ";"}], "\n", 
+ RowBox[{"<|", 
+  RowBox[{
+   RowBox[{"\"\<TStarMs\>\"", " ", "->", " ", 
+    RowBox[{"1000.", " ", "*", " ", 
+     RowBox[{
+      RowBox[{"lab9BDefault", "[", "\"\<Result\>\"", "]"}], 
+      "[", "\"\<ShortestFeasibleDuration\>\"", "]"}]}]}], ",", " ", 
+   RowBox[{"\"\<ValMin\>\"", " ", "->", " ", 
+    RowBox[{
+     RowBox[{"lab9BDefault", "[", "\"\<ValRes\>\"", "]"}], 
+     "[", "\"\<MinFidelity\>\"", "]"}]}]}], "|>"}]}], "Input",ExpressionUUID->\
+"a41d6de2-2629-c24a-9e9e-b8690cc26ba3"],
+
+Cell[BoxData[
+ RowBox[{"DynamicModule", "[", 
+  RowBox[{
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"crit", " ", "=", " ", "\"\<Minimum\>\""}], ",", " ", 
+     RowBox[{"bw", " ", "=", " ", "2."}], ",", " ", 
+     RowBox[{"rf", " ", "=", " ", "5."}], ",", " ", 
+     RowBox[{"data", " ", "=", " ", "lab9BDefault"}]}], "}"}], ",", "\n", 
+   "  ", 
+   RowBox[{"Panel", "[", 
+    RowBox[{"Column", "[", 
+     RowBox[{"{", "\n", "    ", 
+      RowBox[{
+       RowBox[{"Grid", "[", 
+        RowBox[{
+         RowBox[{"{", "\n", "      ", 
+          RowBox[{
+           RowBox[{"{", 
+            RowBox[{"\"\<Feasibility Criterion\>\"", ",", " ", 
+             RowBox[{"SetterBar", "[", 
+              RowBox[{
+               RowBox[{"Dynamic", "[", "crit", "]"}], ",", " ", 
+               RowBox[{"{", 
+                
+                RowBox[{"\"\<Mean\>\"", ",", " ", "\"\<SoftMin\>\"", ",", 
+                 " ", "\"\<Minimum\>\""}], "}"}]}], "]"}]}], "}"}], ",", "\n",
+            "      ", 
+           RowBox[{"{", 
+            RowBox[{"\"\<Half-Bandwidth (kHz)\>\"", ",", " ", 
+             RowBox[{"SetterBar", "[", 
+              RowBox[{
+               RowBox[{"Dynamic", "[", "bw", "]"}], ",", " ", 
+               RowBox[{"{", 
+                RowBox[{"1.5", ",", " ", "2.0", ",", " ", "3.0"}], "}"}]}], 
+              "]"}]}], "}"}], ",", "\n", "      ", 
+           RowBox[{"{", 
+            RowBox[{"\"\<RF Disk Limit (kHz)\>\"", ",", " ", 
+             RowBox[{"SetterBar", "[", 
+              RowBox[{
+               RowBox[{"Dynamic", "[", "rf", "]"}], ",", " ", 
+               RowBox[{"{", 
+                RowBox[{"4.0", ",", " ", "5.0", ",", " ", "6.0"}], "}"}]}], 
+              "]"}]}], "}"}]}], "\n", "    ", "}"}], ",", " ", 
+         RowBox[{"Alignment", " ", "->", " ", "Left"}]}], "]"}], ",", "\n", 
+       "    ", 
+       RowBox[{"Button", "[", 
+        RowBox[{"\"\<Run Robust Time-Optimal Search\>\"", ",", " ", 
+         RowBox[{"data", " ", "=", " ", 
+          RowBox[{"runLab9B", "[", 
+           RowBox[{"crit", ",", " ", "bw", ",", " ", "rf"}], "]"}]}], ",", 
+         " ", 
+         RowBox[{"Method", " ", "->", " ", "\"\<Queued\>\""}]}], "]"}], ",", 
+       "\n", "    ", 
+       RowBox[{"Dynamic", "[", 
+        RowBox[{"renderLab9B", "[", "data", "]"}], "]"}]}], "\n", "  ", "}"}],
+      "]"}], "]"}]}], "\n", "]"}]], "Input",ExpressionUUID->"2ae47dde-dd72-\
+164f-83e6-c29e59444573"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Suggested Experiments", "Section",ExpressionUUID->"b970d1b6-6afd-4545-8505-abdb05cef706"],
+
+Cell["\<\
+1. Tight speed-limit confirmation: In Lab 9A, compare Method -> \"Progressive\
+\" against \"Joint\" and \"Hybrid\" at TargetFidelity -> 0.9999. Joint/Hybrid \
+hit the continuous limit without fixed-factor overshoot.\
+\>", "Item",ExpressionUUID->"cb5cea63-f0ba-2f42-890e-9c87f73ff18f"],
+
+Cell["\<\
+2. Bang-bang PMP signature: Inspect PlotSwitchingFunctions for the optimal \
+box-constrained inversion pulse: notice u(t) saturates +/-nu_max whenever \
+s_x(t) is nonzero and BoundaryFraction equals 1.0.\
+\>", "Item",ExpressionUUID->"07ced89b-3793-2942-b86d-b7c546bc3a2e"],
+
+Cell["\<\
+3. Cost of worst-case robustness: In Lab 9B, run Criterion = \"Mean\" vs \
+\"Minimum\" at +/-2 kHz. \"Mean\" terminates early with shorter T* while edge \
+offsets dip below 0.99, whereas \"Minimum\" guarantees out-of-sample Val(33) \
+Min >= 0.99.\
+\>", "Item",ExpressionUUID->"2e438594-d9b2-8842-b4d0-67b4994fa089"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Summary", "Section",ExpressionUUID->"e0e8b322-2c76-4945-a79e-e19fc1f07df8"],
+
+Cell["\<\
+TimeOptimalControlOptimize, TimeOptimalPulseCurve, \
+VerifyOptimalControlStationarity, PlotTimeOptimalPulseCurve, and \
+PlotSwitchingFunctions integrate time-optimal pulse searches and local \
+Pontryagin diagnostics cleanly with SpinDynamica's GRAPE kernels, \
+constraints, and ensembles.\
+\>", "Text",ExpressionUUID->"acac0644-faa6-0543-ba6f-575ba98ccfc9"],
+
+Cell[TextData[{
+ "Return to ",
+ StyleBox[ButtonBox["00_OptimalControl_Tutorials_Index.nb",
+  BaseStyle->"Hyperlink",
+  Evaluator->Automatic,
+  Method->"Preemptive",
+  ButtonFunction:>NotebookOpen[
+    FileNameJoin[{
+      NotebookDirectory[], "00_OptimalControl_Tutorials_Index.nb"}]]], 
+  "Hyperlink"],
+ " or consult the executable CLI fixture (",
+ StyleBox["Example6_TimeOptimalControl.wls, \
+Example7_RobustTimeOptimalEnsemble.wls",
+  FontFamily->"Courier",
+  FontSize->11],
+ ") and ",
+ StyleBox["Manual Ch. 32",
+  FontFamily->"Courier",
+  FontSize->11],
+ "."
+}], "Item",ExpressionUUID->"33f8894b-efd6-b345-95f6-081fd8639c03"]
+}, Open  ]]
+},
+WindowSize->{1100, 820},
+FrontEndVersion->"14.3 for Microsoft Windows (64-bit) (July 8, 2025)",
+StyleDefinitions->"Default.nb",
+ExpressionUUID->"fd02870f-ebcb-8747-a467-415e1c427722"
+]
+(* End of Notebook Content *)
+
+(* Internal cache information *)
+(*CellTagsOutline
+CellTagsIndex->{}
+*)
+(*CellTagsIndex
+CellTagsIndex->{}
+*)
+(*NotebookFileOutline
+Notebook[{
+Cell[554, 20, 123, 0, 70, "Title",ExpressionUUID->"f5c298ad-e8da-cb4d-b4d2-18bd2786394a"],
+Cell[680, 22, 322, 5, 70, "Subtitle",ExpressionUUID->"829b8f6c-b6fd-a048-8874-0db3afd87b6f"],
+Cell[CellGroupData[{
+Cell[1027, 31, 107, 0, 70, "Section",ExpressionUUID->"1dc47474-2c37-ac44-b99c-dff8d49785e5"],
+Cell[1137, 33, 389, 6, 70, "Text",ExpressionUUID->"11c81df6-d79d-7648-9dfd-a82f5af092ac"],
+Cell[1529, 41, 2920, 77, 70, "Input",ExpressionUUID->"56268d60-8e45-804f-a844-1dba89e42ab4"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[4486, 123, 86, 0, 70, "Section",ExpressionUUID->"077fdc07-7638-e04f-b90c-c1218a60fc27"],
+Cell[4575, 125, 398, 6, 70, "Text",ExpressionUUID->"11075449-487a-164c-9c28-2420c35da825"],
+Cell[4976, 133, 252, 4, 70, "Item",ExpressionUUID->"a81cff9a-de3a-7148-87a7-479f1a58917c"],
+Cell[5231, 139, 187, 3, 70, "Item",ExpressionUUID->"2c5cc94b-44a5-314f-a30b-b5f3d11946b9"],
+Cell[5421, 144, 254, 4, 70, "Item",ExpressionUUID->"aa968546-78e7-8e47-9080-2cf53250f98d"],
+Cell[5678, 150, 238, 4, 70, "Item",ExpressionUUID->"533f06ed-b19f-5a41-862b-e1128904115c"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[5953, 159, 97, 0, 70, "Section",ExpressionUUID->"00d6bd7f-b3b9-1147-963e-ae6f091f0605"],
+Cell[6053, 161, 597, 8, 70, "Text",ExpressionUUID->"a24f714e-1b48-6849-a5b7-73961993c962"],
+Cell[6653, 171, 490, 7, 70, "Text",ExpressionUUID->"c7a6b205-016d-104e-a5dc-09e4fd81e455"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[7180, 183, 88, 0, 70, "Section",ExpressionUUID->"d58ec96a-9515-d14c-bd53-1335afd4bef6"],
+Cell[7271, 185, 324, 5, 70, "Text",ExpressionUUID->"094fb9e4-ff64-7f4f-adea-ded222143831"],
+Cell[7598, 192, 3787, 88, 70, "Input",ExpressionUUID->"d53330c3-9cce-9c48-9439-531e359fd160"],
+Cell[11388, 282, 183, 3, 70, "Text",ExpressionUUID->"6f2cffdb-80d4-8844-9efd-2c7b6e57e532"],
+Cell[11574, 287, 547, 12, 70, "Input",ExpressionUUID->"a2bbb249-f131-4641-a12b-7ced9c38b94c"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[12158, 304, 97, 0, 70, "Section",ExpressionUUID->"3a018b16-66b6-a046-a789-1e479c745ff4"],
+Cell[12258, 306, 310, 5, 70, "Text",ExpressionUUID->"6e2c1a28-bef2-6f4d-b7b8-fef839a8f70b"],
+Cell[12571, 313, 7701, 173, 70, "Input",ExpressionUUID->"e7520dac-4ce0-6148-9b86-1cf1494342e4"],
+Cell[20275, 488, 2438, 57, 70, "Input",ExpressionUUID->"1107224c-5acf-fc46-9733-74498e550d5c"],
+Cell[22716, 547, 246, 4, 70, "Text",ExpressionUUID->"7f4559c5-ab74-5749-9aae-7443c4457e1e"],
+Cell[22965, 553, 13816, 309, 70, "Input",ExpressionUUID->"a41d6de2-2629-c24a-9e9e-b8690cc26ba3"],
+Cell[36784, 864, 2420, 57, 70, "Input",ExpressionUUID->"2ae47dde-dd72-164f-83e6-c29e59444573"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[39241, 926, 95, 0, 70, "Section",ExpressionUUID->"b970d1b6-6afd-4545-8505-abdb05cef706"],
+Cell[39339, 928, 294, 4, 70, "Item",ExpressionUUID->"cb5cea63-f0ba-2f42-890e-9c87f73ff18f"],
+Cell[39636, 934, 282, 4, 70, "Item",ExpressionUUID->"07ced89b-3793-2942-b86d-b7c546bc3a2e"],
+Cell[39921, 940, 325, 5, 70, "Item",ExpressionUUID->"2e438594-d9b2-8842-b4d0-67b4994fa089"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[40283, 950, 81, 0, 70, "Section",ExpressionUUID->"e0e8b322-2c76-4945-a79e-e19fc1f07df8"],
+Cell[40367, 952, 367, 6, 70, "Text",ExpressionUUID->"acac0644-faa6-0543-ba6f-575ba98ccfc9"],
+Cell[40737, 960, 629, 20, 70, "Item",ExpressionUUID->"33f8894b-efd6-b345-95f6-081fd8639c03"]
+}, Open  ]]
+}
+]
+*)
+
+(* End of internal cache information *)

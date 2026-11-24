@@ -1,0 +1,1283 @@
+(* Content-type: application/vnd.wolfram.mathematica *)
+
+(*** Wolfram Notebook File ***)
+(* http://www.wolfram.com/nb *)
+
+(* CreatedBy='Wolfram 14.3' *)
+
+(*CacheID: 234*)
+(* Internal cache information:
+NotebookFileLineBreakTest
+NotebookFileLineBreakTest
+NotebookDataPosition[       154,          7]
+NotebookDataLength[     53696,       1275]
+NotebookOptionsPosition[     50087,       1211]
+NotebookOutlinePosition[     50518,       1228]
+CellTagsIndexPosition[     50475,       1225]
+WindowFrame->Normal*)
+
+(* Beginning of Notebook Content *)
+Notebook[{
+
+Cell[CellGroupData[{
+Cell["\<\
+03. Ensembles, Time-Dependent Hamiltonians, and Liouville Optimisation\
+\>", "Title",ExpressionUUID->"195c65ce-8585-482f-9564-3b0ece4c01fa"],
+
+Cell["\<\
+Robust EnsembleAverage design, CF4 time-dependent generators, dissipative \
+Liouville relaxation rates, coherence-order filtration, and non-smooth \
+fallback.\
+\>", "Subtitle",ExpressionUUID->"3c314229-69ca-449d-b851-b6494c449d03"],
+
+Cell[CellGroupData[{
+
+Cell["0. Setup and Loading SpinDynamica", "Section",ExpressionUUID->"6f4e2929-874e-40c7-b32b-caeaeba015d0"],
+
+Cell["\<\
+Evaluate Cell 1 then Cell 2 to initialize SpinDynamica from the local \
+repository checkout.\
+\>", "Text",ExpressionUUID->"9fc913f8-e906-4121-88f4-bf24347e0cb4"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"nbRepoRoot", " ", "=", " ", 
+   RowBox[{"Module", "[", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"dir", " ", "=", " ", 
+        RowBox[{"Quiet", "[", 
+         RowBox[{"Check", "[", 
+          RowBox[{
+           RowBox[{"NotebookDirectory", "[", "]"}], ",", " ", 
+           RowBox[{"Directory", "[", "]"}]}], "]"}], "]"}]}], ",", " ", 
+       RowBox[{"found", " ", "=", " ", "None"}]}], "}"}], ",", "\n", "  ", 
+     RowBox[{
+      RowBox[{"Do", "[", "\n", "    ", 
+       RowBox[{
+        RowBox[{
+         RowBox[{"If", "[", 
+          RowBox[{
+           RowBox[{"FileExistsQ", "[", 
+            RowBox[{"FileNameJoin", "[", 
+             RowBox[{"{", 
+              RowBox[{
+              "dir", ",", " ", "\"\<SpinDynamica\>\"", ",", 
+               " ", "\"\<SpinDynamica.m\>\""}], "}"}], "]"}], "]"}], ",", 
+           "\n", "      ", 
+           RowBox[{
+            RowBox[{"found", " ", "=", " ", "dir"}], ";", " ", 
+            RowBox[{"Break", "[", "]"}]}]}], "]"}], ";", "\n", "    ", 
+         RowBox[{"dir", " ", "=", " ", 
+          RowBox[{"ParentDirectory", "[", "dir", "]"}]}]}], ",", "\n", "    ", 
+        RowBox[{"{", "6", "}"}]}], "\n", "  ", "]"}], ";", "\n", "  ", 
+      RowBox[{"If", "[", 
+       RowBox[{
+        RowBox[{
+         RowBox[{"found", " ", "===", " ", "None"}], " ", "&&", " ", 
+         RowBox[{"FileExistsQ", "[", 
+          RowBox[{"FileNameJoin", "[", 
+           RowBox[{"{", 
+            RowBox[{
+             RowBox[{"Directory", "[", "]"}], ",", " ", "\"\<SpinDynamica\>\"",
+              ",", " ", "\"\<SpinDynamica.m\>\""}], "}"}], "]"}], "]"}]}], ",",
+         "\n", "    ", 
+        RowBox[{"found", " ", "=", " ", 
+         RowBox[{"Directory", "[", "]"}]}]}], "]"}], ";", "\n", "  ", 
+      "found"}]}], "\n", "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"If", "[", 
+   RowBox[{
+    RowBox[{"StringQ", "[", "nbRepoRoot", "]"}], ",", "\n", "  ", 
+    RowBox[{"Needs", "[", 
+     RowBox[{"\"\<SpinDynamica`\>\"", ",", " ", 
+      RowBox[{"FileNameJoin", "[", 
+       RowBox[{"{", 
+        RowBox[{
+        "nbRepoRoot", ",", " ", "\"\<SpinDynamica\>\"", ",", 
+         " ", "\"\<SpinDynamica.m\>\""}], "}"}], "]"}]}], "]"}], ",", "\n", 
+    "  ", 
+    RowBox[{"Needs", "[", "\"\<SpinDynamica`\>\"", "]"}]}], "\n", "]"}], 
+  ";"}]}], "Input",ExpressionUUID->"8824be11-d56b-48ed-8ed1-b2bbb0679689"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"SetUserLevel", "[", "2", "]"}], ";"}], "\n", 
+ RowBox[{"<|", "\n", "  ", 
+  RowBox[{
+   RowBox[{"\"\<Version\>\"", " ", "->", " ", "$SpinDynamicaVersion"}], ",", 
+   "\n", "  ", 
+   RowBox[{"\"\<CF4Option\>\"", " ", "->", " ", "Substeps"}], ",", "\n", "  ", 
+   RowBox[{"\"\<SpacesSupported\>\"", " ", "->", " ", 
+    RowBox[{"{", 
+     RowBox[{"\"\<Hilbert\>\"", ",", " ", "\"\<Liouville\>\""}], "}"}]}]}], 
+  "\n", "|>"}]}], "Input",ExpressionUUID->"ae5024b9-58b0-4210-8ccf-\
+99db064f58ba"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Introduction", "Section",ExpressionUUID->"79a01bed-9fe6-44d7-9700-72887f9370b9"],
+
+Cell["\<\
+Beyond piecewise-constant closed Hilbert systems, general pulse sequence \
+design requires robustness across resonance offsets and RF inhomogeneity, \
+shaped continuous pulses, and relaxation/filtration superoperators.\
+\>", "Text",ExpressionUUID->"a75eedf5-553e-4110-bfc9-05614060bcab"],
+
+Cell["\<\
+EnsembleAverage: Pre-expanded at compile time; compiled serial evaluation \
+runs ~27-39x faster than legacy serial and avoids ~45-150 ms WSTP subkernel \
+IPC overhead on fast 1-2 spin ensembles.\
+\>", "Item",ExpressionUUID->"20fa27e2-374f-4bb4-8b3b-1c3c26cd7674"],
+
+Cell["\<\
+Continuous TD pulses: 4th-order Commutator-Free Magnus (CF4) integration with \
+exact accumulated tStart chain rule and HVP support.\
+\>", "Item",ExpressionUUID->"79374e9e-8594-4cb2-8e14-760046b7b504"],
+
+Cell["\<\
+Dissipative Liouville space: Automatic selection for \
+PhenomenologicalRelaxationSuperoperator and CoherenceOrderFiltration with \
+exact block-Frechet gradients.\
+\>", "Item",ExpressionUUID->"ac85c434-b8a0-464f-a41a-c404ee55273c"],
+
+Cell["\<\
+Non-smooth objectives: Automatic detection of Piecewise/If selects \
+derivative-free NelderMead seamlessly.\
+\>", "Item",ExpressionUUID->"a3bcbe05-799e-4d8c-aee2-6721fd18cbf4"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Mathematical Background", "Section",ExpressionUUID->"642256c1-dc0d-43f2-8449-a5095b7f4b8f"],
+
+Cell["\<\
+For continuous generators H(t; theta), substeps m = 1..M subdivide \
+[t_start(theta), t_start(theta) + tau(theta)] at Gauss-Legendre nodes c_1 = \
+1/2 - sqrt(3)/6 and c_2 = 1/2 + sqrt(3)/6, factoring in both explicit \
+parameter partials (dH/dtheta) and shifted evaluation time (dt_start/dtheta + \
+f_m dtau/dtheta) (dH/dt). In Liouville space, derivatives of P = \
+exp(A(theta)) solve the 2d x 2d block-triangular matrix exponential exp({{A, \
+E}, {0, A}})_{1,2} automatically.\
+\>", "Text",ExpressionUUID->"1e96ce57-795a-4ac0-9577-fcec7cee82be"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Worked Example", "Section",ExpressionUUID->"dffd8002-8ee3-416b-94eb-41df853df99a"],
+
+Cell["\<\
+Run four realistic scenarios: (1) 15-member robust 3-pulse inversion, (2) \
+quadrature shaped TD generator + delay with analytical gradient check, (3) \
+dissipative Liouville optimization + COF check, and (4) automatic non-smooth \
+Piecewise handling.\
+\>", "Text",ExpressionUUID->"adf87d8d-037d-464d-8008-98003ea3fb87"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"SetSpinSystem", "[", "1", "]"}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"ensGrid15", " ", "=", " ", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{"off", ",", " ", "rf"}], "}"}], ",", " ", 
+     RowBox[{"Flatten", "[", 
+      RowBox[{
+       RowBox[{"Table", "[", 
+        RowBox[{
+         RowBox[{"{", 
+          RowBox[{
+           RowBox[{"{", 
+            RowBox[{"o", ",", " ", "r"}], "}"}], ",", " ", 
+           RowBox[{"1.", "/", "15."}]}], "}"}], ",", " ", 
+         RowBox[{"{", 
+          RowBox[{"o", ",", " ", 
+           RowBox[{"{", 
+            RowBox[{
+             RowBox[{"-", "300."}], ",", " ", 
+             RowBox[{"-", "150."}], ",", " ", "0.", ",", " ", "150.", ",", 
+             " ", "300."}], "}"}]}], "}"}], ",", " ", 
+         RowBox[{"{", 
+          RowBox[{"r", ",", " ", 
+           RowBox[{"{", 
+            RowBox[{"0.9", ",", " ", "1.0", ",", " ", "1.1"}], "}"}]}], 
+          "}"}]}], "]"}], ",", " ", "1"}], "]"}]}], "}"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{"resEns15", " ", "=", " ", 
+    RowBox[{"OptimizeTransformationAmplitude", "[", "\n", "  ", 
+     RowBox[{
+      RowBox[{
+       RowBox[{"opI", "[", 
+        RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", "->", " ", 
+       RowBox[{"-", 
+        RowBox[{"opI", "[", 
+         RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}]}], ",", "\n", "  ", 
+      RowBox[{"{", 
+       RowBox[{
+        RowBox[{"{", 
+         RowBox[{
+          RowBox[{"rf", " ", "*", " ", 
+           RowBox[{"(", 
+            RowBox[{"b1", " ", "/", " ", "0.0005"}], ")"}], " ", "*", " ", 
+           RowBox[{"(", 
+            RowBox[{
+             RowBox[{
+              RowBox[{"Cos", "[", "p1", "]"}], " ", 
+              RowBox[{"opI", "[", 
+               RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], " ", "+", " ", 
+             RowBox[{
+              RowBox[{"Sin", "[", "p1", "]"}], " ", 
+              RowBox[{"opI", "[", 
+               RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}]}], ")"}]}], ",", 
+          " ", "0.0005"}], "}"}], ",", "\n", "   ", 
+        RowBox[{"{", 
+         RowBox[{
+          RowBox[{"rf", " ", "*", " ", 
+           RowBox[{"(", 
+            RowBox[{"b2", " ", "/", " ", "0.0005"}], ")"}], " ", "*", " ", 
+           RowBox[{"(", 
+            RowBox[{
+             RowBox[{
+              RowBox[{"Cos", "[", "p2", "]"}], " ", 
+              RowBox[{"opI", "[", 
+               RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], " ", "+", " ", 
+             RowBox[{
+              RowBox[{"Sin", "[", "p2", "]"}], " ", 
+              RowBox[{"opI", "[", 
+               RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}]}], ")"}]}], ",", 
+          " ", "0.0005"}], "}"}], ",", "\n", "   ", 
+        RowBox[{"{", 
+         RowBox[{
+          RowBox[{"rf", " ", "*", " ", 
+           RowBox[{"(", 
+            RowBox[{"b3", " ", "/", " ", "0.0005"}], ")"}], " ", "*", " ", 
+           RowBox[{"(", 
+            RowBox[{
+             RowBox[{
+              RowBox[{"Cos", "[", "p3", "]"}], " ", 
+              RowBox[{"opI", "[", 
+               RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], " ", "+", " ", 
+             RowBox[{
+              RowBox[{"Sin", "[", "p3", "]"}], " ", 
+              RowBox[{"opI", "[", 
+               RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}]}], ")"}]}], ",", 
+          " ", "0.0005"}], "}"}]}], "}"}], ",", "\n", "  ", 
+      RowBox[{"{", 
+       RowBox[{
+        RowBox[{"{", 
+         RowBox[{"b1", ",", " ", "1.3"}], "}"}], ",", " ", 
+        RowBox[{"{", 
+         RowBox[{"p1", ",", " ", "0.1"}], "}"}], ",", " ", 
+        RowBox[{"{", 
+         RowBox[{"b2", ",", " ", "2.9"}], "}"}], ",", " ", 
+        RowBox[{"{", 
+         RowBox[{"p2", ",", " ", "1.5"}], "}"}], ",", " ", 
+        RowBox[{"{", 
+         RowBox[{"b3", ",", " ", "1.3"}], "}"}], ",", " ", 
+        RowBox[{"{", 
+         RowBox[{"p3", ",", " ", "0.1"}], "}"}]}], "}"}], ",", "\n", "  ", 
+      RowBox[{"BackgroundGenerator", " ", "->", " ", 
+       RowBox[{"off", " ", "*", " ", 
+        RowBox[{"opI", "[", 
+         RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}]}], ",", "\n", "  ", 
+      RowBox[{"EnsembleAverage", " ", "->", " ", "ensGrid15"}], ",", "\n", 
+      "  ", 
+      RowBox[{"Optimizer", " ", "->", " ", "\"\<LBFGS\>\""}], ",", "\n", "  ", 
+      RowBox[{"Parallel", " ", "->", " ", "False"}]}], "\n", "]"}]}], ";"}], 
+  "\n"}], "\n", 
+ RowBox[{
+  RowBox[{"probTD", " ", "=", " ", 
+   RowBox[{"TransformationOptimizationProblem", "[", "\n", "  ", 
+    RowBox[{
+     RowBox[{
+      RowBox[{"opI", "[", 
+       RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", "->", " ", 
+      RowBox[{"opI", "[", 
+       RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], ",", "\n", "  ", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"Delay", "[", "tPre", "]"}], ",", " ", 
+       RowBox[{"{", 
+        RowBox[{
+         RowBox[{"TimeDependentGeneratorFunction", "[", 
+          RowBox[{"t", ",", " ", 
+           RowBox[{"{", 
+            RowBox[{"{", 
+             RowBox[{"s", ",", " ", "0"}], "}"}], "}"}], ",", " ", "1", ",", 
+           "\n", "    ", 
+           RowBox[{"aMax", " ", "*", " ", 
+            RowBox[{"(", 
+             RowBox[{"1.", " ", "-", " ", 
+              RowBox[{
+               RowBox[{"(", 
+                RowBox[{"2.", " ", 
+                 RowBox[{
+                  RowBox[{"(", 
+                   RowBox[{"s", " ", "-", " ", 
+                    RowBox[{"0.5", " ", "tDur"}]}], ")"}], " ", "/", " ", 
+                  "tDur"}]}], ")"}], "^", "2"}]}], ")"}], " ", "*", " ", 
+            RowBox[{"(", 
+             RowBox[{
+              RowBox[{
+               RowBox[{"Cos", "[", "phiTD", "]"}], " ", 
+               RowBox[{"opI", "[", 
+                RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], " ", "+", " ", 
+              RowBox[{
+               RowBox[{"Sin", "[", "phiTD", "]"}], " ", 
+               RowBox[{"opI", "[", 
+                RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}]}], ")"}]}]}], 
+          "]"}], ",", " ", "tDur"}], "}"}]}], "}"}], ",", "\n", "  ", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"{", 
+        RowBox[{"tPre", ",", " ", "0.001"}], "}"}], ",", " ", 
+       RowBox[{"{", 
+        RowBox[{"aMax", ",", " ", "1200."}], "}"}], ",", " ", 
+       RowBox[{"{", 
+        RowBox[{"phiTD", ",", " ", "1.3"}], "}"}], ",", " ", 
+       RowBox[{"{", 
+        RowBox[{"tDur", ",", " ", "0.002"}], "}"}]}], "}"}], ",", "\n", "  ", 
+     RowBox[{"BackgroundGenerator", " ", "->", " ", 
+      RowBox[{"180.", " ", "*", " ", 
+       RowBox[{"opI", "[", 
+        RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}]}]}], "\n", "]"}]}], 
+  ";"}], "\n", 
+ RowBox[{
+  RowBox[{"vgTD", " ", "=", " ", 
+   RowBox[{"VerifyTransformationOptimizationGradient", "[", 
+    RowBox[{"probTD", ",", " ", 
+     RowBox[{"Substeps", " ", "->", " ", "16"}]}], "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{"resTD", " ", "=", " ", 
+    RowBox[{"OptimizeTransformationAmplitude", "[", 
+     RowBox[{"probTD", ",", " ", 
+      RowBox[{"Substeps", " ", "->", " ", "16"}], ",", " ", 
+      RowBox[{"Optimizer", " ", "->", " ", "\"\<LBFGS\>\""}]}], "]"}]}], 
+   ";"}], "\n"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{"resLiouv", " ", "=", " ", 
+    RowBox[{"OptimizeTransformationAmplitude", "[", "\n", "  ", 
+     RowBox[{
+      RowBox[{
+       RowBox[{"opI", "[", 
+        RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", "->", " ", 
+       RowBox[{"opI", "[", 
+        RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], ",", "\n", "  ", 
+      RowBox[{"{", 
+       RowBox[{
+        RowBox[{"{", 
+         RowBox[{
+          RowBox[{"wRFl", " ", "*", " ", 
+           RowBox[{"(", 
+            RowBox[{
+             RowBox[{
+              RowBox[{"Cos", "[", "phiL", "]"}], " ", 
+              RowBox[{"opI", "[", 
+               RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], " ", "+", " ", 
+             RowBox[{
+              RowBox[{"Sin", "[", "phiL", "]"}], " ", 
+              RowBox[{"opI", "[", 
+               RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}]}], ")"}]}], ",", 
+          " ", "0.004"}], "}"}], ",", " ", 
+        RowBox[{"Delay", "[", "0.002", "]"}]}], "}"}], ",", "\n", "  ", 
+      RowBox[{"{", 
+       RowBox[{
+        RowBox[{"{", 
+         RowBox[{"wRFl", ",", " ", "300."}], "}"}], ",", " ", 
+        RowBox[{"{", 
+         RowBox[{"phiL", ",", " ", "0.4"}], "}"}]}], "}"}], ",", "\n", "  ", 
+      RowBox[{"BackgroundGenerator", " ", "->", " ", 
+       RowBox[{"(", 
+        RowBox[{
+         RowBox[{"CommutationSuperoperator", "[", 
+          RowBox[{
+           RowBox[{"-", "I"}], " ", "*", " ", "2.", " ", "Pi", " ", "*", " ", 
+           "60.", " ", "*", " ", 
+           RowBox[{"opI", "[", 
+            RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}], "]"}], " ", "+", 
+         " ", 
+         RowBox[{"PhenomenologicalRelaxationSuperoperator", "[", 
+          RowBox[{"0.5", ",", " ", "0.08"}], "]"}]}], ")"}]}], ",", "\n", 
+      "  ", 
+      RowBox[{"Optimizer", " ", "->", " ", "\"\<LBFGS\>\""}], ",", " ", 
+      RowBox[{"LineSearch", " ", "->", " ", "\"\<HagerZhang\>\""}]}], "\n", 
+     "]"}]}], ";"}], "\n"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{"resNS", " ", "=", " ", 
+    RowBox[{"OptimizeTransformationAmplitude", "[", "\n", "  ", 
+     RowBox[{
+      RowBox[{
+       RowBox[{"opI", "[", 
+        RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", "->", " ", 
+       RowBox[{"opI", "[", 
+        RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], ",", "\n", "  ", 
+      RowBox[{"{", 
+       RowBox[{"Pulse", "[", 
+        RowBox[{"1", ",", " ", 
+         RowBox[{"{", 
+          RowBox[{
+           RowBox[{"If", "[", 
+            RowBox[{
+             RowBox[{"xNS", " ", "<", " ", "0.8"}], ",", " ", 
+             RowBox[{"0.8", " ", "+", " ", 
+              RowBox[{"0.5", " ", 
+               RowBox[{"(", 
+                RowBox[{"xNS", " ", "-", " ", "0.8"}], ")"}]}]}], ",", " ", 
+             RowBox[{"0.8", " ", "+", " ", 
+              RowBox[{"1.5", " ", 
+               RowBox[{"(", 
+                RowBox[{"xNS", " ", "-", " ", "0.8"}], ")"}]}]}]}], "]"}], ",",
+            " ", "\"\<y\>\""}], "}"}]}], "]"}], "}"}], ",", "\n", "  ", 
+      RowBox[{"{", 
+       RowBox[{"{", 
+        RowBox[{"xNS", ",", " ", "0.4", ",", " ", 
+         RowBox[{"{", 
+          RowBox[{"0.", ",", " ", "3."}], "}"}]}], "}"}], "}"}]}], "\n", 
+     "]"}]}], ";"}], "\n"}], "\n", 
+ RowBox[{"<|", "\n", "  ", 
+  RowBox[{
+   RowBox[{"\"\<Ensemble15_Value\>\"", " ", "->", " ", 
+    RowBox[{"resEns15", "[", "\"\<Value\>\"", "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<Ensemble15_Wall_ms\>\"", " ", "->", " ", 
+    RowBox[{"Round", "[", 
+     RowBox[{
+      RowBox[{"1000.", " ", "*", " ", 
+       RowBox[{"resEns15", "[", "\"\<ElapsedTime\>\"", "]"}]}], ",", " ", 
+      "0.1"}], "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<TD_GradRelErr\>\"", " ", "->", " ", 
+    RowBox[{"vgTD", "[", "\"\<RelativeError\>\"", "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<TD_Value\>\"", " ", "->", " ", 
+    RowBox[{"resTD", "[", "\"\<Value\>\"", "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<Liouville_Space\>\"", " ", "->", " ", 
+    RowBox[{"resLiouv", "[", "\"\<Space\>\"", "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<Liouville_Value\>\"", " ", "->", " ", 
+    RowBox[{"resLiouv", "[", "\"\<Value\>\"", "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<NonSmooth_AutoSolver\>\"", " ", "->", " ", 
+    RowBox[{"resNS", "[", "\"\<Optimizer\>\"", "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<NonSmooth_Value\>\"", " ", "->", " ", 
+    RowBox[{"resNS", "[", "\"\<Value\>\"", "]"}]}]}], "\n", "|>"}]}], "Input",
+ CellLabel->"In[55]:=",ExpressionUUID->"07505927-e0c2-4222-a889-2274b40baa76"],
+
+Cell[BoxData[
+ TemplateBox[{
+  "SetSpinSystem", "set", 
+   "\"the spin system has been set to \\!\\(\\*RowBox[{\\\"{\\\", \
+RowBox[{\\\"{\\\", RowBox[{\\\"1\\\", \\\",\\\", FractionBox[\\\"1\\\", \\\"2\
+\\\"]}], \\\"}\\\"}], \\\"}\\\"}]\\)\"", 2, 55, 11, 33228104283178126465, 
+   "Local", "QM`Hilbert`SetSpinSystem"},
+  "MessageTemplate2",
+  BaseStyle->"MSG"]], "Message",
+ CellChangeTimes->{4.0044652571084747`*^9},
+ CellLabel->
+  "During evaluation of \
+In[55]:=",ExpressionUUID->"5c280b0e-dc7a-b74b-911f-bce22da54b0d"],
+
+Cell[BoxData[
+ TemplateBox[{
+  "SetBasis", "set", 
+   "\"the state basis has been set to \\!\\(\\*RowBox[{\\\"ZeemanBasis\\\", \
+\\\"[\\\", RowBox[{RowBox[{\\\"{\\\", RowBox[{\\\"{\\\", RowBox[{\\\"1\\\", \
+\\\",\\\", FractionBox[\\\"1\\\", \\\"2\\\"]}], \\\"}\\\"}], \\\"}\\\"}], \
+\\\",\\\", RowBox[{\\\"BasisLabels\\\", \\\"\[Rule]\\\", \
+\\\"Automatic\\\"}]}], \\\"]\\\"}]\\).\"", 2, 55, 12, 33228104283178126465, 
+   "Local", "QM`Hilbert`SetBasis"},
+  "MessageTemplate2",
+  BaseStyle->"MSG"]], "Message",
+ CellChangeTimes->{4.0044652571084747`*^9},
+ CellLabel->
+  "During evaluation of \
+In[55]:=",ExpressionUUID->"a0aa10eb-a709-7144-965a-a4c6e2a38fd7"],
+
+Cell[BoxData[
+ RowBox[{"\[LeftAssociation]", 
+  RowBox[{
+   RowBox[{"\<\"Ensemble15_Value\"\>", "\[Rule]", "0.9993968616110128`"}], ",", 
+   RowBox[{"\<\"Ensemble15_Wall_ms\"\>", "\[Rule]", "523.8000000000001`"}], ",", 
+   RowBox[{"\<\"TD_GradRelErr\"\>", "\[Rule]", "5.4243592908605064`*^-8"}], ",", 
+   RowBox[{"\<\"TD_Value\"\>", "\[Rule]", "1.0000000000000007`"}], ",", 
+   RowBox[{"\<\"Liouville_Space\"\>", "\[Rule]", "\<\"Liouville\"\>"}], ",", 
+   RowBox[{"\<\"Liouville_Value\"\>", "\[Rule]", "0.9456711433000269`"}], ",", 
+   RowBox[{"\<\"NonSmooth_AutoSolver\"\>", "\[Rule]", "\<\"NelderMead\"\>"}], 
+   ",", 
+   RowBox[{"\<\"NonSmooth_Value\"\>", "\[Rule]", "0.9999999999999958`"}]}], 
+  "\[RightAssociation]"}]], "Output",
+ CellChangeTimes->{4.0044652577807617`*^9},
+ CellLabel->"Out[63]=",ExpressionUUID->"49979c51-9ec4-1446-a5e9-653c6429b7c1"]
+}, Open  ]]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Interactive Exploration", "Section",ExpressionUUID->"a43cec31-977c-4f71-8305-314517be111d"],
+
+Cell["\<\
+Lab G3A designs a robust 3-pulse composite sequence over a tunable (offset, \
+B1) ensemble box and plots the 2D inversion robustness landscape. Lab G3B \
+explores Liouville amplitude decay as T2 varies alongside CF4 quadrature \
+accuracy as Substeps changes.\
+\>", "Text",ExpressionUUID->"4092d7c1-bf9e-4667-923d-60b030542355"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{
+   RowBox[{
+    RowBox[{"runLabG3A", "[", 
+     RowBox[{
+      RowBox[{"maxOff_", "?", "NumericQ"}], ",", " ", 
+      RowBox[{"b1Span_", "?", "NumericQ"}]}], "]"}], " ", ":=", " ", 
+    RowBox[{"Module", "[", "\n", "  ", 
+     RowBox[{
+      RowBox[{"{", 
+       RowBox[{
+       "offs", ",", " ", "b1s", ",", " ", "grid", ",", " ", "r", ",", " ", 
+        "rules", ",", " ", "mapPts"}], "}"}], ",", "\n", "  ", 
+      RowBox[{
+       RowBox[{"SetSpinSystem", "[", "1", "]"}], ";", "\n", "  ", 
+       RowBox[{"offs", " ", "=", " ", 
+        RowBox[{"{", 
+         RowBox[{
+          RowBox[{"-", "maxOff"}], ",", " ", "0.", ",", " ", "maxOff"}], 
+         "}"}]}], ";", "\n", "  ", 
+       RowBox[{"b1s", " ", "=", " ", 
+        RowBox[{"{", 
+         RowBox[{
+          RowBox[{"1.", " ", "-", " ", "b1Span"}], ",", " ", "1.", ",", " ", 
+          RowBox[{"1.", " ", "+", " ", "b1Span"}]}], "}"}]}], ";", "\n", "  ", 
+       RowBox[{"grid", " ", "=", " ", 
+        RowBox[{"{", 
+         RowBox[{
+          RowBox[{"{", 
+           RowBox[{"off", ",", " ", "rf"}], "}"}], ",", " ", 
+          RowBox[{"Flatten", "[", 
+           RowBox[{
+            RowBox[{"Table", "[", 
+             RowBox[{
+              RowBox[{"{", 
+               RowBox[{
+                RowBox[{"{", 
+                 RowBox[{"o", ",", " ", "b"}], "}"}], ",", " ", 
+                RowBox[{"1.", "/", "9."}]}], "}"}], ",", " ", 
+              RowBox[{"{", 
+               RowBox[{"o", ",", " ", "offs"}], "}"}], ",", " ", 
+              RowBox[{"{", 
+               RowBox[{"b", ",", " ", "b1s"}], "}"}]}], "]"}], ",", " ", 
+            "1"}], "]"}]}], "}"}]}], ";", "\n", "  ", 
+       RowBox[{"r", " ", "=", " ", 
+        RowBox[{"OptimizeTransformationAmplitude", "[", "\n", "    ", 
+         RowBox[{
+          RowBox[{
+           RowBox[{"opI", "[", 
+            RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", "->", " ", 
+           RowBox[{"-", 
+            RowBox[{"opI", "[", 
+             RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}]}], ",", "\n", 
+          "    ", 
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"{", 
+             RowBox[{
+              RowBox[{"rf", " ", "*", " ", 
+               RowBox[{"(", 
+                RowBox[{"b1", " ", "/", " ", "0.0005"}], ")"}], " ", "*", " ", 
+               RowBox[{"(", 
+                RowBox[{
+                 RowBox[{
+                  RowBox[{"Cos", "[", "p1", "]"}], " ", 
+                  RowBox[{"opI", "[", 
+                   RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], " ", "+", 
+                 " ", 
+                 RowBox[{
+                  RowBox[{"Sin", "[", "p1", "]"}], " ", 
+                  RowBox[{"opI", "[", 
+                   RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}]}], ")"}]}], ",",
+               " ", "0.0005"}], "}"}], ",", "\n", "     ", 
+            RowBox[{"{", 
+             RowBox[{
+              RowBox[{"rf", " ", "*", " ", 
+               RowBox[{"(", 
+                RowBox[{"b2", " ", "/", " ", "0.0005"}], ")"}], " ", "*", " ", 
+               RowBox[{"(", 
+                RowBox[{
+                 RowBox[{
+                  RowBox[{"Cos", "[", "p2", "]"}], " ", 
+                  RowBox[{"opI", "[", 
+                   RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], " ", "+", 
+                 " ", 
+                 RowBox[{
+                  RowBox[{"Sin", "[", "p2", "]"}], " ", 
+                  RowBox[{"opI", "[", 
+                   RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}]}], ")"}]}], ",",
+               " ", "0.0005"}], "}"}], ",", "\n", "     ", 
+            RowBox[{"{", 
+             RowBox[{
+              RowBox[{"rf", " ", "*", " ", 
+               RowBox[{"(", 
+                RowBox[{"b3", " ", "/", " ", "0.0005"}], ")"}], " ", "*", " ", 
+               RowBox[{"(", 
+                RowBox[{
+                 RowBox[{
+                  RowBox[{"Cos", "[", "p3", "]"}], " ", 
+                  RowBox[{"opI", "[", 
+                   RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], " ", "+", 
+                 " ", 
+                 RowBox[{
+                  RowBox[{"Sin", "[", "p3", "]"}], " ", 
+                  RowBox[{"opI", "[", 
+                   RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}]}], ")"}]}], ",",
+               " ", "0.0005"}], "}"}]}], "}"}], ",", "\n", "    ", 
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"{", 
+             RowBox[{"b1", ",", " ", "1.3"}], "}"}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{"p1", ",", " ", "0.1"}], "}"}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{"b2", ",", " ", "2.9"}], "}"}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{"p2", ",", " ", "1.5"}], "}"}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{"b3", ",", " ", "1.3"}], "}"}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{"p3", ",", " ", "0.1"}], "}"}]}], "}"}], ",", "\n", 
+          "    ", 
+          RowBox[{"BackgroundGenerator", " ", "->", " ", 
+           RowBox[{"off", " ", "*", " ", 
+            RowBox[{"opI", "[", 
+             RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}]}], ",", "\n", 
+          "    ", 
+          RowBox[{"EnsembleAverage", " ", "->", " ", "grid"}], ",", "\n", 
+          "    ", 
+          RowBox[{"Optimizer", " ", "->", " ", "\"\<LBFGS\>\""}], ",", "\n", 
+          "    ", 
+          RowBox[{"Parallel", " ", "->", " ", "False"}]}], "\n", "  ", 
+         "]"}]}], ";", "\n", "  ", 
+       RowBox[{"rules", " ", "=", " ", 
+        RowBox[{"r", "[", "\"\<Rules\>\"", "]"}]}], ";", "\n", "  ", 
+       RowBox[{"mapPts", " ", "=", " ", 
+        RowBox[{"Flatten", "[", 
+         RowBox[{
+          RowBox[{"Table", "[", "\n", "    ", 
+           RowBox[{
+            RowBox[{"With", "[", 
+             RowBox[{
+              RowBox[{"{", 
+               RowBox[{"val", " ", "=", " ", 
+                RowBox[{"Quiet", "[", 
+                 RowBox[{"TransformationAmplitude", "[", "\n", "        ", 
+                  RowBox[{
+                   RowBox[{
+                    RowBox[{"opI", "[", 
+                    RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", "->", 
+                    " ", 
+                    RowBox[{"-", 
+                    RowBox[{"opI", "[", 
+                    RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}]}], ",", 
+                   "\n", "        ", 
+                   RowBox[{"(", 
+                    RowBox[{
+                    RowBox[{"{", 
+                    RowBox[{
+                    RowBox[{"{", 
+                    RowBox[{
+                    RowBox[{"(", 
+                    RowBox[{"rfVal", " ", "*", " ", 
+                    RowBox[{"(", 
+                    RowBox[{"b1", " ", "/", " ", "0.0005"}], ")"}], " ", "*", 
+                    " ", 
+                    RowBox[{"(", 
+                    RowBox[{
+                    RowBox[{
+                    RowBox[{"Cos", "[", "p1", "]"}], " ", 
+                    RowBox[{"opI", "[", 
+                    RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], " ", "+", 
+                    " ", 
+                    RowBox[{
+                    RowBox[{"Sin", "[", "p1", "]"}], " ", 
+                    RowBox[{"opI", "[", 
+                    RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}]}], ")"}]}], 
+                    ")"}], ",", " ", "0.0005"}], "}"}], ",", "\n", 
+                    "          ", 
+                    RowBox[{"{", 
+                    RowBox[{
+                    RowBox[{"(", 
+                    RowBox[{"rfVal", " ", "*", " ", 
+                    RowBox[{"(", 
+                    RowBox[{"b2", " ", "/", " ", "0.0005"}], ")"}], " ", "*", 
+                    " ", 
+                    RowBox[{"(", 
+                    RowBox[{
+                    RowBox[{
+                    RowBox[{"Cos", "[", "p2", "]"}], " ", 
+                    RowBox[{"opI", "[", 
+                    RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], " ", "+", 
+                    " ", 
+                    RowBox[{
+                    RowBox[{"Sin", "[", "p2", "]"}], " ", 
+                    RowBox[{"opI", "[", 
+                    RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}]}], ")"}]}], 
+                    ")"}], ",", " ", "0.0005"}], "}"}], ",", "\n", 
+                    "          ", 
+                    RowBox[{"{", 
+                    RowBox[{
+                    RowBox[{"(", 
+                    RowBox[{"rfVal", " ", "*", " ", 
+                    RowBox[{"(", 
+                    RowBox[{"b3", " ", "/", " ", "0.0005"}], ")"}], " ", "*", 
+                    " ", 
+                    RowBox[{"(", 
+                    RowBox[{
+                    RowBox[{
+                    RowBox[{"Cos", "[", "p3", "]"}], " ", 
+                    RowBox[{"opI", "[", 
+                    RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], " ", "+", 
+                    " ", 
+                    RowBox[{
+                    RowBox[{"Sin", "[", "p3", "]"}], " ", 
+                    RowBox[{"opI", "[", 
+                    RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}]}], ")"}]}], 
+                    ")"}], ",", " ", "0.0005"}], "}"}]}], "}"}], " ", "/.", 
+                    " ", "rules"}], ")"}], ",", "\n", "        ", 
+                   RowBox[{"BackgroundGenerator", " ", "->", " ", 
+                    RowBox[{"oVal", " ", "*", " ", 
+                    RowBox[{"opI", "[", 
+                    RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}]}]}], "\n", 
+                  "      ", "]"}], "]"}]}], "}"}], ",", "\n", "      ", 
+              RowBox[{"{", 
+               RowBox[{"oVal", ",", " ", "rfVal", ",", " ", 
+                RowBox[{"Re", "[", "val", "]"}]}], "}"}]}], "\n", "    ", 
+             "]"}], ",", "\n", "    ", 
+            RowBox[{"{", 
+             RowBox[{"oVal", ",", " ", 
+              RowBox[{"Subdivide", "[", 
+               RowBox[{
+                RowBox[{
+                 RowBox[{"-", "1.25"}], " ", "*", " ", "maxOff"}], ",", " ", 
+                RowBox[{"1.25", " ", "*", " ", "maxOff"}], ",", " ", "10"}], 
+               "]"}]}], "}"}], ",", "\n", "    ", 
+            RowBox[{"{", 
+             RowBox[{"rfVal", ",", " ", 
+              RowBox[{"Subdivide", "[", 
+               RowBox[{
+                RowBox[{"Max", "[", 
+                 RowBox[{"0.5", ",", " ", 
+                  RowBox[{"1.", " ", "-", " ", 
+                   RowBox[{"1.25", " ", "*", " ", "b1Span"}]}]}], "]"}], ",", 
+                " ", 
+                RowBox[{"1.", " ", "+", " ", 
+                 RowBox[{"1.25", " ", "*", " ", "b1Span"}]}], ",", " ", "6"}],
+                "]"}]}], "}"}]}], "\n", "  ", "]"}], ",", " ", "1"}], "]"}]}],
+        ";", "\n", "  ", 
+       RowBox[{"<|", "\n", "    ", 
+        RowBox[{
+         RowBox[{"\"\<Result\>\"", " ", "->", " ", "r"}], ",", "\n", "    ", 
+         RowBox[{"\"\<MaxOff\>\"", " ", "->", " ", "maxOff"}], ",", "\n", 
+         "    ", 
+         RowBox[{"\"\<B1Span\>\"", " ", "->", " ", "b1Span"}], ",", "\n", 
+         "    ", 
+         RowBox[{"\"\<MapPts\>\"", " ", "->", " ", "mapPts"}]}], "\n", "  ", 
+        "|>"}]}]}], "\n", "]"}]}], ";"}], "\n"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{
+    RowBox[{"renderLabG3A", "[", "d_Association", "]"}], " ", ":=", " ", 
+    RowBox[{"Module", "[", 
+     RowBox[{
+      RowBox[{"{", 
+       RowBox[{"r", " ", "=", " ", 
+        RowBox[{"d", "[", "\"\<Result\>\"", "]"}]}], "}"}], ",", "\n", "  ", 
+      RowBox[{"Column", "[", 
+       RowBox[{"{", "\n", "    ", 
+        RowBox[{
+         RowBox[{"Grid", "[", 
+          RowBox[{
+           RowBox[{"{", "\n", "      ", 
+            RowBox[{
+             RowBox[{"{", 
+              RowBox[{"\"\<Mean Ensemble Inversion\>\"", ",", " ", 
+               RowBox[{"NumberForm", "[", 
+                RowBox[{
+                 RowBox[{"r", "[", "\"\<Value\>\"", "]"}], ",", " ", "7"}], 
+                "]"}], ",", " ", "\"\<Wall Time (ms)\>\"", ",", " ", 
+               RowBox[{"Round", "[", 
+                RowBox[{
+                 RowBox[{"1000.", " ", "*", " ", 
+                  RowBox[{"r", "[", "\"\<ElapsedTime\>\"", "]"}]}], ",", " ", 
+                 "0.1"}], "]"}]}], "}"}], ",", "\n", "      ", 
+             RowBox[{"{", 
+              RowBox[{"\"\<Min Sampled Amp\>\"", ",", " ", 
+               RowBox[{"NumberForm", "[", 
+                RowBox[{
+                 RowBox[{"Min", "[", 
+                  RowBox[{
+                   RowBox[{"d", "[", "\"\<MapPts\>\"", "]"}], "[", 
+                   RowBox[{"[", 
+                    RowBox[{"All", ",", " ", "3"}], "]"}], "]"}], "]"}], ",", 
+                 " ", "6"}], "]"}], ",", " ", "\"\<Iterations / Evals\>\"", ",",
+                " ", 
+               RowBox[{"Row", "[", 
+                RowBox[{"{", 
+                 RowBox[{
+                  RowBox[{"r", "[", "\"\<Iterations\>\"", "]"}], ",", 
+                  " ", "\"\< / \>\"", ",", " ", 
+                  RowBox[{"r", "[", "\"\<Evaluations\>\"", "]"}]}], "}"}], 
+                "]"}]}], "}"}]}], "\n", "    ", "}"}], ",", " ", 
+           RowBox[{"Frame", " ", "->", " ", "All"}], ",", " ", 
+           RowBox[{"Alignment", " ", "->", " ", "Left"}]}], "]"}], ",", "\n", 
+         "    ", 
+         RowBox[{"ListContourPlot", "[", 
+          RowBox[{
+           RowBox[{"d", "[", "\"\<MapPts\>\"", "]"}], ",", "\n", "      ", 
+           RowBox[{"FrameLabel", " ", "->", " ", 
+            RowBox[{"{", 
+             
+             RowBox[{"\"\<Offset (rad/s)\>\"", ",", 
+              " ", "\"\<RF Scale B1\>\""}], "}"}]}], ",", "\n", "      ", 
+           RowBox[{"PlotLabel", " ", "->", " ", 
+            RowBox[{"StringForm", "[", 
+             RowBox[{"\"\<3-Pulse Robustness Map (Mean=`1`)\>\"", ",", " ", 
+              RowBox[{"NumberForm", "[", 
+               RowBox[{
+                RowBox[{"r", "[", "\"\<Value\>\"", "]"}], ",", " ", "5"}], 
+               "]"}]}], "]"}]}], ",", "\n", "      ", 
+           RowBox[{"PlotLegends", " ", "->", " ", "Automatic"}], ",", " ", 
+           RowBox[{"Contours", " ", "->", " ", "10"}], ",", " ", 
+           RowBox[{
+           "ColorFunction", " ", "->", " ", "\"\<TemperatureMap\>\""}], ",", 
+           " ", 
+           RowBox[{"ImageSize", " ", "->", " ", "500"}]}], "]"}]}], "\n", 
+        "  ", "}"}], "]"}]}], "\n", "]"}]}], ";"}], "\n"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{
+    RowBox[{"runLabG3B", "[", 
+     RowBox[{
+      RowBox[{"t2Sec_", "?", "NumericQ"}], ",", " ", "nSub_Integer"}], "]"}], 
+    " ", ":=", " ", 
+    RowBox[{"Module", "[", "\n", "  ", 
+     RowBox[{
+      RowBox[{"{", 
+       RowBox[{"rL", ",", " ", "prT", ",", " ", "vgT"}], "}"}], ",", "\n", 
+      "  ", 
+      RowBox[{
+       RowBox[{"SetSpinSystem", "[", "1", "]"}], ";", "\n", "  ", 
+       RowBox[{"rL", " ", "=", " ", 
+        RowBox[{"OptimizeTransformationAmplitude", "[", "\n", "    ", 
+         RowBox[{
+          RowBox[{
+           RowBox[{"opI", "[", 
+            RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", "->", " ", 
+           RowBox[{"opI", "[", 
+            RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], ",", "\n", "    ", 
+          
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"{", 
+             RowBox[{
+              RowBox[{"wRFl", " ", "*", " ", 
+               RowBox[{"(", 
+                RowBox[{
+                 RowBox[{
+                  RowBox[{"Cos", "[", "phiL", "]"}], " ", 
+                  RowBox[{"opI", "[", 
+                   RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], " ", "+", 
+                 " ", 
+                 RowBox[{
+                  RowBox[{"Sin", "[", "phiL", "]"}], " ", 
+                  RowBox[{"opI", "[", 
+                   RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}]}], ")"}]}], ",",
+               " ", "0.004"}], "}"}], ",", " ", 
+            RowBox[{"Delay", "[", "0.002", "]"}]}], "}"}], ",", "\n", "    ", 
+          
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"{", 
+             RowBox[{"wRFl", ",", " ", "300."}], "}"}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{"phiL", ",", " ", "0.4"}], "}"}]}], "}"}], ",", "\n", 
+          "    ", 
+          RowBox[{"BackgroundGenerator", " ", "->", " ", 
+           RowBox[{"(", 
+            RowBox[{
+             RowBox[{"CommutationSuperoperator", "[", 
+              RowBox[{
+               RowBox[{"-", "I"}], " ", "*", " ", "2.", " ", "Pi", " ", "*", 
+               " ", "60.", " ", "*", " ", 
+               RowBox[{"opI", "[", 
+                RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}], "]"}], " ", "+",
+              "\n", "      ", 
+             RowBox[{"PhenomenologicalRelaxationSuperoperator", "[", 
+              RowBox[{"0.5", ",", " ", "t2Sec"}], "]"}]}], ")"}]}], ",", "\n",
+           "    ", 
+          RowBox[{"Optimizer", " ", "->", " ", "\"\<LBFGS\>\""}], ",", " ", 
+          RowBox[{"LineSearch", " ", "->", " ", "\"\<HagerZhang\>\""}]}], 
+         "\n", "  ", "]"}]}], ";", "\n", "  ", 
+       RowBox[{"prT", " ", "=", " ", 
+        RowBox[{"TransformationOptimizationProblem", "[", "\n", "    ", 
+         RowBox[{
+          RowBox[{
+           RowBox[{"opI", "[", 
+            RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", "->", " ", 
+           RowBox[{"opI", "[", 
+            RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], ",", "\n", "    ", 
+          
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"Delay", "[", "tPre", "]"}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{
+              RowBox[{"TimeDependentGeneratorFunction", "[", 
+               RowBox[{"t", ",", " ", 
+                RowBox[{"{", 
+                 RowBox[{"{", 
+                  RowBox[{"s", ",", " ", "0"}], "}"}], "}"}], ",", " ", "1", ",",
+                 "\n", "      ", 
+                RowBox[{"aMax", " ", "*", " ", 
+                 RowBox[{"(", 
+                  RowBox[{"1.", " ", "-", " ", 
+                   RowBox[{
+                    RowBox[{"(", 
+                    RowBox[{"2.", " ", 
+                    RowBox[{
+                    RowBox[{"(", 
+                    RowBox[{"s", " ", "-", " ", 
+                    RowBox[{"0.5", " ", "tDur"}]}], ")"}], " ", "/", " ", 
+                    "tDur"}]}], ")"}], "^", "2"}]}], ")"}], " ", "*", " ", 
+                 RowBox[{"opI", "[", 
+                  RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}]}], "]"}], ",",
+               " ", "tDur"}], "}"}]}], "}"}], ",", "\n", "    ", 
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"{", 
+             RowBox[{"tPre", ",", " ", "0.001"}], "}"}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{"aMax", ",", " ", "1100."}], "}"}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{"tDur", ",", " ", "0.002"}], "}"}]}], "}"}], ",", "\n", 
+          "    ", 
+          RowBox[{"BackgroundGenerator", " ", "->", " ", 
+           RowBox[{"180.", " ", "*", " ", 
+            RowBox[{"opI", "[", 
+             RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}]}]}], "\n", "  ", 
+         "]"}]}], ";", "\n", "  ", 
+       RowBox[{"vgT", " ", "=", " ", 
+        RowBox[{"VerifyTransformationOptimizationGradient", "[", 
+         RowBox[{"prT", ",", " ", 
+          RowBox[{"Substeps", " ", "->", " ", "nSub"}]}], "]"}]}], ";", "\n", 
+       "  ", 
+       RowBox[{"<|", "\n", "    ", 
+        RowBox[{
+         RowBox[{"\"\<T2\>\"", " ", "->", " ", "t2Sec"}], ",", "\n", "    ", 
+         RowBox[{"\"\<LiouvilleAmp\>\"", " ", "->", " ", 
+          RowBox[{"rL", "[", "\"\<Value\>\"", "]"}]}], ",", "\n", "    ", 
+         RowBox[{"\"\<LiouvilleRules\>\"", " ", "->", " ", 
+          RowBox[{"rL", "[", "\"\<Rules\>\"", "]"}]}], ",", "\n", "    ", 
+         RowBox[{"\"\<LiouvilleSpace\>\"", " ", "->", " ", 
+          RowBox[{"rL", "[", "\"\<Space\>\"", "]"}]}], ",", "\n", "    ", 
+         RowBox[{"\"\<Substeps\>\"", " ", "->", " ", "nSub"}], ",", "\n", 
+         "    ", 
+         RowBox[{"\"\<CF4GradRelErr\>\"", " ", "->", " ", 
+          RowBox[{"vgT", "[", "\"\<RelativeError\>\"", "]"}]}], ",", "\n", 
+         "    ", 
+         RowBox[{"\"\<CF4GradPassed\>\"", " ", "->", " ", 
+          RowBox[{"vgT", "[", "\"\<Passed\>\"", "]"}]}]}], "\n", "  ", 
+        "|>"}]}]}], "\n", "]"}]}], ";"}], "\n"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{
+    RowBox[{"renderLabG3B", "[", "d_Association", "]"}], " ", ":=", " ", 
+    RowBox[{"Grid", "[", 
+     RowBox[{
+      RowBox[{"{", "\n", "  ", 
+       RowBox[{
+        RowBox[{"{", 
+         RowBox[{
+          RowBox[{"\"\<Dissipative Liouville (T2 = \>\"", " ", "<>", " ", 
+           RowBox[{"ToString", "[", 
+            RowBox[{"NumberForm", "[", 
+             RowBox[{
+              RowBox[{"d", "[", "\"\<T2\>\"", "]"}], ",", " ", "3"}], "]"}], 
+            "]"}], " ", "<>", " ", "\"\< s)\>\""}], ",", " ", 
+          RowBox[{"\"\<Continuous TD CF4 (Substeps = \>\"", " ", "<>", " ", 
+           RowBox[{"ToString", "[", 
+            RowBox[{"d", "[", "\"\<Substeps\>\"", "]"}], "]"}], " ", "<>", 
+           " ", "\"\<)\>\""}]}], "}"}], ",", "\n", "  ", 
+        RowBox[{"{", 
+         RowBox[{
+          RowBox[{"\"\<Optimal Amplitude: \>\"", " ", "<>", " ", 
+           RowBox[{"ToString", "[", 
+            RowBox[{"NumberForm", "[", 
+             RowBox[{
+              RowBox[{"d", "[", "\"\<LiouvilleAmp\>\"", "]"}], ",", " ", 
+              "7"}], "]"}], "]"}]}], ",", " ", 
+          RowBox[{"\"\<Grad RelErr vs Central FD: \>\"", " ", "<>", " ", 
+           RowBox[{"ToString", "[", 
+            RowBox[{"ScientificForm", "[", 
+             RowBox[{
+              RowBox[{"d", "[", "\"\<CF4GradRelErr\>\"", "]"}], ",", " ", 
+              "3"}], "]"}], "]"}]}]}], "}"}], ",", "\n", "  ", 
+        RowBox[{"{", 
+         RowBox[{
+          RowBox[{"\"\<Space: \>\"", " ", "<>", " ", 
+           RowBox[{"d", "[", "\"\<LiouvilleSpace\>\"", "]"}]}], ",", " ", 
+          RowBox[{"\"\<Gradient Check Passed: \>\"", " ", "<>", " ", 
+           RowBox[{"ToString", "[", 
+            RowBox[{"d", "[", "\"\<CF4GradPassed\>\"", "]"}], "]"}]}]}], 
+         "}"}]}], "\n", "}"}], ",", " ", 
+      RowBox[{"Frame", " ", "->", " ", "All"}], ",", " ", 
+      RowBox[{"Alignment", " ", "->", " ", "Left"}]}], "]"}]}], ";"}], 
+  "\n"}], "\n", 
+ RowBox[{
+  RowBox[{"labG3ADefault", " ", "=", " ", 
+   RowBox[{"runLabG3A", "[", 
+    RowBox[{"300.", ",", " ", "0.1"}], "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"labG3BDefault", " ", "=", " ", 
+   RowBox[{"runLabG3B", "[", 
+    RowBox[{"0.08", ",", " ", "16"}], "]"}]}], ";"}], "\n", 
+ RowBox[{"{", 
+  RowBox[{
+   RowBox[{
+    RowBox[{"labG3ADefault", "[", "\"\<Result\>\"", "]"}], 
+    "[", "\"\<Value\>\"", "]"}], ",", " ", 
+   RowBox[{"labG3BDefault", "[", "\"\<LiouvilleAmp\>\"", "]"}]}], 
+  "}"}]}], "Input",ExpressionUUID->"98396334-3dd4-4510-9c10-a8b0533699f9"],
+
+Cell[BoxData[
+ RowBox[{"DynamicModule", "[", 
+  RowBox[{
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"offMax", " ", "=", " ", "300."}], ",", " ", 
+     RowBox[{"b1S", " ", "=", " ", "0.1"}], ",", " ", 
+     RowBox[{"eData", " ", "=", " ", "labG3ADefault"}]}], "}"}], ",", "\n", 
+   "  ", 
+   RowBox[{"Panel", "[", 
+    RowBox[{"Column", "[", 
+     RowBox[{"{", "\n", "    ", 
+      RowBox[{
+       RowBox[{"Grid", "[", 
+        RowBox[{
+         RowBox[{"{", "\n", "      ", 
+          RowBox[{
+           RowBox[{"{", 
+            RowBox[{"\"\<Max Offset +/- (rad/s):\>\"", ",", " ", 
+             RowBox[{"Row", "[", 
+              RowBox[{"{", 
+               RowBox[{
+                RowBox[{"Slider", "[", 
+                 RowBox[{
+                  RowBox[{"Dynamic", "[", "offMax", "]"}], ",", " ", 
+                  RowBox[{"{", 
+                   RowBox[{"50.", ",", " ", "500.", ",", " ", "50."}], 
+                   "}"}]}], "]"}], ",", " ", "\"\< \>\"", ",", " ", 
+                RowBox[{"Dynamic", "[", "offMax", "]"}]}], "}"}], "]"}]}], 
+            "}"}], ",", "\n", "      ", 
+           RowBox[{"{", 
+            RowBox[{"\"\<B1 Spread +/-:\>\"", ",", " ", 
+             RowBox[{"Row", "[", 
+              RowBox[{"{", 
+               RowBox[{
+                RowBox[{"Slider", "[", 
+                 RowBox[{
+                  RowBox[{"Dynamic", "[", "b1S", "]"}], ",", " ", 
+                  RowBox[{"{", 
+                   RowBox[{"0.02", ",", " ", "0.20", ",", " ", "0.02"}], 
+                   "}"}]}], "]"}], ",", " ", "\"\< \>\"", ",", " ", 
+                RowBox[{"Dynamic", "[", "b1S", "]"}]}], "}"}], "]"}]}], 
+            "}"}]}], "\n", "    ", "}"}], ",", " ", 
+         RowBox[{"Alignment", " ", "->", " ", "Left"}]}], "]"}], ",", "\n", 
+       "    ", 
+       RowBox[{"Button", "[", 
+        RowBox[{"\"\<Optimise 9-Member Ensemble\>\"", ",", " ", 
+         RowBox[{"eData", " ", "=", " ", 
+          RowBox[{"runLabG3A", "[", 
+           RowBox[{"offMax", ",", " ", "b1S"}], "]"}]}], ",", " ", 
+         RowBox[{"Method", " ", "->", " ", "\"\<Queued\>\""}]}], "]"}], ",", 
+       "\n", "    ", 
+       RowBox[{"Dynamic", "[", 
+        RowBox[{"renderLabG3A", "[", "eData", "]"}], "]"}]}], "\n", "  ", 
+      "}"}], "]"}], "]"}]}], "\n", "]"}]], "Input",ExpressionUUID->"87a71ef3-\
+ea8c-46e2-99da-a522343f12d9"],
+
+Cell[BoxData[
+ RowBox[{"DynamicModule", "[", 
+  RowBox[{
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"t2V", " ", "=", " ", "0.08"}], ",", " ", 
+     RowBox[{"subN", " ", "=", " ", "16"}], ",", " ", 
+     RowBox[{"mData", " ", "=", " ", "labG3BDefault"}]}], "}"}], ",", "\n", 
+   "  ", 
+   RowBox[{"Panel", "[", 
+    RowBox[{"Column", "[", 
+     RowBox[{"{", "\n", "    ", 
+      RowBox[{
+       RowBox[{"Grid", "[", 
+        RowBox[{
+         RowBox[{"{", "\n", "      ", 
+          RowBox[{
+           RowBox[{"{", 
+            RowBox[{"\"\<Relaxation T2 (s):\>\"", ",", " ", 
+             RowBox[{"Row", "[", 
+              RowBox[{"{", 
+               RowBox[{
+                RowBox[{"Slider", "[", 
+                 RowBox[{
+                  RowBox[{"Dynamic", "[", "t2V", "]"}], ",", " ", 
+                  RowBox[{"{", 
+                   RowBox[{"0.02", ",", " ", "0.25", ",", " ", "0.02"}], 
+                   "}"}]}], "]"}], ",", " ", "\"\< \>\"", ",", " ", 
+                RowBox[{"Dynamic", "[", "t2V", "]"}]}], "}"}], "]"}]}], "}"}],
+            ",", "\n", "      ", 
+           RowBox[{"{", 
+            RowBox[{"\"\<CF4 Substeps:\>\"", ",", " ", 
+             RowBox[{"SetterBar", "[", 
+              RowBox[{
+               RowBox[{"Dynamic", "[", "subN", "]"}], ",", " ", 
+               RowBox[{"{", 
+                RowBox[{"4", ",", " ", "8", ",", " ", "16", ",", " ", "24"}], 
+                "}"}]}], "]"}]}], "}"}]}], "\n", "    ", "}"}], ",", " ", 
+         RowBox[{"Alignment", " ", "->", " ", "Left"}]}], "]"}], ",", "\n", 
+       "    ", 
+       RowBox[{"Button", "[", 
+        RowBox[{"\"\<Evaluate Liouville & CF4\>\"", ",", " ", 
+         RowBox[{"mData", " ", "=", " ", 
+          RowBox[{"runLabG3B", "[", 
+           RowBox[{"t2V", ",", " ", "subN"}], "]"}]}], ",", " ", 
+         RowBox[{"Method", " ", "->", " ", "\"\<Queued\>\""}]}], "]"}], ",", 
+       "\n", "    ", 
+       RowBox[{"Dynamic", "[", 
+        RowBox[{"renderLabG3B", "[", "mData", "]"}], "]"}]}], "\n", "  ", 
+      "}"}], "]"}], "]"}]}], "\n", "]"}]], "Input",ExpressionUUID->"84075248-\
+c8f5-4151-b131-c3ac06813400"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Suggested Experiments", "Section",ExpressionUUID->"1aaff8ae-06b3-4960-b3d8-3cb8465e9e93"],
+
+Cell["\<\
+1. Expand Max Offset to 500 rad/s and B1 Spread to 0.20 in Lab G3A to observe \
+the robustness trade-off between bandwidth and worst-case corner amplitude.\
+\>", "Item",ExpressionUUID->"3eb64182-b34e-4888-98e5-b62d8ca40bf3"],
+
+Cell["\<\
+2. Note why Parallel -> False is kept as the default for small-spin \
+ensembles: subkernel IPC overhead outweighs serial compiled speeds of ~13-31 \
+ms.\
+\>", "Item",ExpressionUUID->"94960b8d-5d95-497b-8c72-ef5d9825fd1f"],
+
+Cell["\<\
+3. Vary T2 in Lab G3B down to 0.02 s and see Liouville optimal pulse \
+amplitude shift slightly to minimize decay during finite duration.\
+\>", "Item",ExpressionUUID->"2dc5a9f5-10ba-44c5-9da3-b4d92b3b604e"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Summary", "Section",ExpressionUUID->"6742412a-2f7b-4ff1-a3b8-80e5009f742e"],
+
+Cell["\<\
+EnsembleAverage, CF4 continuous generators, Liouville relaxation/filtration \
+superoperators, and automatic Piecewise fallback all share one unified \
+analytical/compiled optimization architecture.\
+\>", "Text",ExpressionUUID->"0362b3b9-8cc6-46d9-95a9-f121ce36b071"],
+
+Cell[TextData[{
+ "Return to ",
+ StyleBox[ButtonBox["00_GeneralOptimization_Tutorials_Index.nb",
+  BaseStyle->"Hyperlink",
+  Evaluator->Automatic,
+  Method->"Preemptive",
+  ButtonFunction:>NotebookOpen[
+    FileNameJoin[{
+      NotebookDirectory[], "00_GeneralOptimization_Tutorials_Index.nb"}]]], 
+  "Hyperlink"],
+ " or explore Examples/Optimization/GeneralOptimization_WorkedExamples.wls \
+and Examples/Signals/Notebooks/01_Bruker_1D_Data_Import_and_Signal_Workflow.\
+nb."
+}], "Item",ExpressionUUID->"f1b49f22-40bb-41f2-8cb4-2c9233405c79"]
+}, Open  ]]
+}, Open  ]]
+},
+WindowSize->{1440, 741.75},
+WindowMargins->{{-6, Automatic}, {Automatic, -6}},
+Magnification:>0.9 Inherited,
+FrontEndVersion->"14.3 for Microsoft Windows (64-bit) (July 8, 2025)",
+StyleDefinitions->"Default.nb",
+ExpressionUUID->"d8a0c83d-9624-4444-a190-b391db3923e7"
+]
+(* End of Notebook Content *)
+
+(* Internal cache information *)
+(*CellTagsOutline
+CellTagsIndex->{}
+*)
+(*CellTagsIndex
+CellTagsIndex->{}
+*)
+(*NotebookFileOutline
+Notebook[{
+Cell[CellGroupData[{
+Cell[576, 22, 150, 2, 86, "Title",ExpressionUUID->"195c65ce-8585-482f-9564-3b0ece4c01fa"],
+Cell[729, 26, 241, 4, 75, "Subtitle",ExpressionUUID->"3c314229-69ca-449d-b851-b6494c449d03"],
+Cell[CellGroupData[{
+Cell[995, 34, 107, 0, 59, "Section",ExpressionUUID->"6f4e2929-874e-40c7-b32b-caeaeba015d0"],
+Cell[1105, 36, 171, 3, 30, "Text",ExpressionUUID->"9fc913f8-e906-4121-88f4-bf24347e0cb4"],
+Cell[1279, 41, 2406, 60, 265, "Input",ExpressionUUID->"8824be11-d56b-48ed-8ed1-b2bbb0679689"],
+Cell[3688, 103, 528, 12, 111, "Input",ExpressionUUID->"ae5024b9-58b0-4210-8ccf-99db064f58ba"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[4253, 120, 86, 0, 59, "Section",ExpressionUUID->"79a01bed-9fe6-44d7-9700-72887f9370b9"],
+Cell[4342, 122, 297, 4, 30, "Text",ExpressionUUID->"a75eedf5-553e-4110-bfc9-05614060bcab"],
+Cell[4642, 128, 273, 4, 27, "Item",ExpressionUUID->"20fa27e2-374f-4bb4-8b3b-1c3c26cd7674"],
+Cell[4918, 134, 211, 3, 27, "Item",ExpressionUUID->"79374e9e-8594-4cb2-8e14-760046b7b504"],
+Cell[5132, 139, 240, 4, 27, "Item",ExpressionUUID->"ac85c434-b8a0-464f-a41a-c404ee55273c"],
+Cell[5375, 145, 186, 3, 27, "Item",ExpressionUUID->"a3bcbe05-799e-4d8c-aee2-6721fd18cbf4"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[5598, 153, 97, 0, 59, "Section",ExpressionUUID->"642256c1-dc0d-43f2-8449-a5095b7f4b8f"],
+Cell[5698, 155, 557, 8, 50, "Text",ExpressionUUID->"1e96ce57-795a-4ac0-9577-fcec7cee82be"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[6292, 168, 88, 0, 59, "Section",ExpressionUUID->"dffd8002-8ee3-416b-94eb-41df853df99a"],
+Cell[6383, 170, 330, 5, 50, "Text",ExpressionUUID->"adf87d8d-037d-464d-8008-98003ea3fb87"],
+Cell[CellGroupData[{
+Cell[6738, 179, 11713, 288, 830, "Input",ExpressionUUID->"07505927-e0c2-4222-a889-2274b40baa76"],
+Cell[18454, 469, 522, 12, 33, "Message",ExpressionUUID->"5c280b0e-dc7a-b74b-911f-bce22da54b0d"],
+Cell[18979, 483, 658, 14, 33, "Message",ExpressionUUID->"a0aa10eb-a709-7144-965a-a4c6e2a38fd7"],
+Cell[19640, 499, 858, 14, 49, "Output",ExpressionUUID->"49979c51-9ec4-1446-a5e9-653c6429b7c1"]
+}, Open  ]]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[20547, 519, 97, 0, 59, "Section",ExpressionUUID->"a43cec31-977c-4f71-8305-314517be111d"],
+Cell[20647, 521, 337, 5, 50, "Text",ExpressionUUID->"4092d7c1-bf9e-4667-923d-60b030542355"],
+Cell[20987, 528, 22831, 523, 1566, "Input",ExpressionUUID->"98396334-3dd4-4510-9c10-a8b0533699f9"],
+Cell[43821, 1053, 2350, 55, 63, "Input",ExpressionUUID->"87a71ef3-ea8c-46e2-99da-a522343f12d9"],
+Cell[46174, 1110, 2123, 50, 63, "Input",ExpressionUUID->"84075248-c8f5-4151-b131-c3ac06813400"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[48334, 1165, 95, 0, 63, "Section",ExpressionUUID->"1aaff8ae-06b3-4960-b3d8-3cb8465e9e93"],
+Cell[48432, 1167, 234, 3, 63, "Item",ExpressionUUID->"3eb64182-b34e-4888-98e5-b62d8ca40bf3"],
+Cell[48669, 1172, 231, 4, 63, "Item",ExpressionUUID->"94960b8d-5d95-497b-8c72-ef5d9825fd1f"],
+Cell[48903, 1178, 216, 3, 63, "Item",ExpressionUUID->"2dc5a9f5-10ba-44c5-9da3-b4d92b3b604e"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[49156, 1186, 81, 0, 63, "Section",ExpressionUUID->"6742412a-2f7b-4ff1-a3b8-80e5009f742e"],
+Cell[49240, 1188, 276, 4, 63, "Text",ExpressionUUID->"0362b3b9-8cc6-46d9-95a9-f121ce36b071"],
+Cell[49519, 1194, 540, 13, 63, "Item",ExpressionUUID->"f1b49f22-40bb-41f2-8cb4-2c9233405c79"]
+}, Open  ]]
+}, Open  ]]
+}
+]
+*)
+

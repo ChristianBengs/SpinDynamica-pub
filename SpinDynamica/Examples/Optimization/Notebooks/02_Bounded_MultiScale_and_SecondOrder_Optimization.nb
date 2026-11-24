@@ -1,0 +1,1258 @@
+(* Content-type: application/vnd.wolfram.mathematica *)
+
+(*** Wolfram Notebook File ***)
+(* http://www.wolfram.com/nb *)
+
+(* CreatedBy='Wolfram 14.3' *)
+
+(*CacheID: 234*)
+(* Internal cache information:
+NotebookFileLineBreakTest
+NotebookFileLineBreakTest
+NotebookDataPosition[       154,          7]
+NotebookDataLength[     51946,       1249]
+NotebookOptionsPosition[     48687,       1193]
+NotebookOutlinePosition[     49034,       1208]
+CellTagsIndexPosition[     48991,       1205]
+WindowFrame->Normal*)
+
+(* Beginning of Notebook Content *)
+Notebook[{
+Cell["02. Bounded, Multi-Scale, and Second-Order Optimisation", "Title",ExpressionUUID->"dbed943b-3adf-4a5c-a674-d18b8fdb672e"],
+
+Cell["\<\
+ConstrainPositive and box bounds, automatic coordinate scaling across \
+10^-3..10^3, O(K) exact HVP verification, BoundTransform -> \"Sigmoid\" / \
+\"Log\", and static event fusion + dependency caching.\
+\>", "Subtitle",ExpressionUUID->"f0f74ed1-dc23-4d74-a42c-4c78ac097f9f"],
+
+Cell[CellGroupData[{
+
+Cell["0. Setup and Loading SpinDynamica", "Section",ExpressionUUID->"a86d17ac-20d0-4bc0-b890-820df501372b"],
+
+Cell["\<\
+Evaluate Cell 1 then Cell 2 to load SpinDynamica and verify second-order and \
+verification symbols.\
+\>", "Text",ExpressionUUID->"52365ef7-b326-427e-90bb-3fd81d98bca7"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"nbRepoRoot", " ", "=", " ", 
+   RowBox[{"Module", "[", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"dir", " ", "=", " ", 
+        RowBox[{"Quiet", "[", 
+         RowBox[{"Check", "[", 
+          RowBox[{
+           RowBox[{"NotebookDirectory", "[", "]"}], ",", " ", 
+           RowBox[{"Directory", "[", "]"}]}], "]"}], "]"}]}], ",", " ", 
+       RowBox[{"found", " ", "=", " ", "None"}]}], "}"}], ",", "\n", "  ", 
+     RowBox[{
+      RowBox[{"Do", "[", "\n", "    ", 
+       RowBox[{
+        RowBox[{
+         RowBox[{"If", "[", 
+          RowBox[{
+           RowBox[{"FileExistsQ", "[", 
+            RowBox[{"FileNameJoin", "[", 
+             RowBox[{"{", 
+              RowBox[{
+              "dir", ",", " ", "\"\<SpinDynamica\>\"", ",", 
+               " ", "\"\<SpinDynamica.m\>\""}], "}"}], "]"}], "]"}], ",", 
+           "\n", "      ", 
+           RowBox[{
+            RowBox[{"found", " ", "=", " ", "dir"}], ";", " ", 
+            RowBox[{"Break", "[", "]"}]}]}], "]"}], ";", "\n", "    ", 
+         RowBox[{"dir", " ", "=", " ", 
+          RowBox[{"ParentDirectory", "[", "dir", "]"}]}]}], ",", "\n", "    ", 
+        RowBox[{"{", "6", "}"}]}], "\n", "  ", "]"}], ";", "\n", "  ", 
+      RowBox[{"If", "[", 
+       RowBox[{
+        RowBox[{
+         RowBox[{"found", " ", "===", " ", "None"}], " ", "&&", " ", 
+         RowBox[{"FileExistsQ", "[", 
+          RowBox[{"FileNameJoin", "[", 
+           RowBox[{"{", 
+            RowBox[{
+             RowBox[{"Directory", "[", "]"}], ",", " ", "\"\<SpinDynamica\>\"",
+              ",", " ", "\"\<SpinDynamica.m\>\""}], "}"}], "]"}], "]"}]}], ",",
+         "\n", "    ", 
+        RowBox[{"found", " ", "=", " ", 
+         RowBox[{"Directory", "[", "]"}]}]}], "]"}], ";", "\n", "  ", 
+      "found"}]}], "\n", "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"If", "[", 
+   RowBox[{
+    RowBox[{"StringQ", "[", "nbRepoRoot", "]"}], ",", "\n", "  ", 
+    RowBox[{"Needs", "[", 
+     RowBox[{"\"\<SpinDynamica`\>\"", ",", " ", 
+      RowBox[{"FileNameJoin", "[", 
+       RowBox[{"{", 
+        RowBox[{
+        "nbRepoRoot", ",", " ", "\"\<SpinDynamica\>\"", ",", 
+         " ", "\"\<SpinDynamica.m\>\""}], "}"}], "]"}]}], "]"}], ",", "\n", 
+    "  ", 
+    RowBox[{"Needs", "[", "\"\<SpinDynamica`\>\"", "]"}]}], "\n", "]"}], 
+  ";"}]}], "Input",ExpressionUUID->"f7f95f45-36ed-4a76-a89f-7658e53aa874"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"SetUserLevel", "[", "2", "]"}], ";"}], "\n", 
+ RowBox[{"<|", "\n", "  ", 
+  RowBox[{
+   RowBox[{"\"\<Version\>\"", " ", "->", " ", "$SpinDynamicaVersion"}], ",", 
+   "\n", "  ", 
+   RowBox[{"\"\<HasSecondOrder\>\"", " ", "->", " ", 
+    RowBox[{"MemberQ", "[", 
+     RowBox[{
+      RowBox[{"Names", "[", "\"\<Optimization`Solvers`*\>\"", "]"}], ",", 
+      " ", "\"\<BoundTransform\>\""}], "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<HasVerifiers\>\"", " ", "->", " ", 
+    RowBox[{"SubsetQ", "[", 
+     RowBox[{
+      RowBox[{
+      "Names", "[", "\"\<Optimization`GeneralOptimization`*\>\"", "]"}], ",", 
+      "\n", "    ", 
+      RowBox[{"{", 
+       RowBox[{"\"\<VerifyTransformationOptimizationGradient\>\"", ",", 
+        " ", "\"\<VerifyTransformationOptimizationHVP\>\""}], "}"}]}], 
+     "]"}]}]}], "\n", "|>"}]}], "Input",ExpressionUUID->"65833200-2d35-443b-\
+a321-d26692310219"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Introduction", "Section",ExpressionUUID->"311c733c-daf6-457c-b495-95b8691a5068"],
+
+Cell["\<\
+Realistic NMR sequences combine RF amplitudes (10^3-10^5 rad/s), O(1) phases, \
+and short millisecond/microsecond delays constrained to strictly positive \
+domains (tau > 0). Scaling coordinates automatically and supplying exact \
+analytical Hessians eliminates ill-conditioning across scales.\
+\>", "Text",ExpressionUUID->"99d97203-a7ab-467c-a7f2-29bbdfd9b2bd"],
+
+Cell["\<\
+Enforce positivity with ConstrainPositive -> True | {vars...} or explicit box \
+bounds {lb, ub}.\
+\>", "Item",ExpressionUUID->"2d9c5a1a-7187-42be-baf4-139c1963f876"],
+
+Cell["\<\
+Unlock second-order solvers (HybridLBFGSNewtonCG, TrustRegionNewtonCG, \
+NewtonRFO) on bounded problems via BoundTransform -> \"Sigmoid\" or \"Log\".\
+\>", "Item",ExpressionUUID->"84ce576e-3670-4cd7-954c-12f46865e976"],
+
+Cell["\<\
+Verify analytical gradients and O(K) Hessian-vector products against \
+high-accuracy central finite differences.\
+\>", "Item",ExpressionUUID->"24f7dd26-0184-4964-80c4-45b9f748cfe9"],
+
+Cell["\<\
+Inspect FuseStaticEvents propagator compression and dependency-slice \
+HashTable caching.\
+\>", "Item",ExpressionUUID->"ed24ebdd-d54e-4fad-9231-119adea2a707"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Mathematical Background", "Section",ExpressionUUID->"5eb04526-2f63-4dc2-9fa1-1c238bfd05c2"],
+
+Cell["\<\
+To handle multi-scale variables (e.g. w ~ 10^3 rad/s alongside tau ~ 10^-3 \
+s), RunGeneralOptimizer maps physical parameters x to dimensionless solver \
+coordinates theta_i = x_i / m_i ~ O(1) via ParameterScaling -> Automatic. For \
+bounded second-order optimization on x in [lb, ub], BoundTransform -> \
+\"Sigmoid\" applies x_i(u_i) = lb_i + (ub_i - lb_i) sigma(u_i) (or \"Log\" \
+x_i = lb_i + Exp(u_i)) and propagates exact chain-rule derivatives g_u = \
+diag(x') g_x and Hessians H_u = diag(x') H_x diag(x') + diag(g_x * x'').\
+\>", "Text",ExpressionUUID->"3e3087e2-6a67-4c5f-92d7-8aa1dab7d90f"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Worked Example", "Section",ExpressionUUID->"1e553db7-3a07-4005-90ca-ae383655c3d3"],
+
+Cell["\<\
+Verify derivatives and optimize (a) bounded 2-spin INEPT delays, (b) a \
+6-parameter multi-scale 2-spin sequence (10^-3..10^3), and (c) static fusion \
++ cache telemetry on a 20-event sequence.\
+\>", "Text",ExpressionUUID->"84ab7706-72b8-48f2-a95e-73c1116027c0"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"SetSpinSystem", "[", 
+   RowBox[{"{", 
+    RowBox[{"1", ",", " ", "2"}], "}"}], "]"}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"probINEPT", " ", "=", " ", 
+   RowBox[{"TransformationOptimizationProblem", "[", "\n", "  ", 
+    RowBox[{
+     RowBox[{
+      RowBox[{"opI", "[", 
+       RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", "->", " ", 
+      RowBox[{"2", " ", 
+       RowBox[{
+        RowBox[{"opI", "[", 
+         RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", ".", " ", 
+        RowBox[{"opI", "[", 
+         RowBox[{"2", ",", " ", "\"\<x\>\""}], "]"}]}]}]}], ",", "\n", "  ", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"Pulse", "[", 
+        RowBox[{"1", ",", " ", 
+         RowBox[{"{", 
+          RowBox[{
+           RowBox[{"Pi", "/", "2"}], ",", " ", "\"\<x\>\""}], "}"}]}], "]"}], 
+       ",", " ", 
+       RowBox[{"Delay", "[", "tau1", "]"}], ",", " ", 
+       RowBox[{"Pulse", "[", 
+        RowBox[{
+         RowBox[{"{", 
+          RowBox[{"1", ",", " ", "2"}], "}"}], ",", " ", 
+         RowBox[{"{", 
+          RowBox[{"Pi", ",", " ", "\"\<x\>\""}], "}"}]}], "]"}], ",", " ", 
+       RowBox[{"Delay", "[", "tau2", "]"}], ",", " ", 
+       RowBox[{"Pulse", "[", 
+        RowBox[{
+         RowBox[{"{", 
+          RowBox[{"1", ",", " ", "2"}], "}"}], ",", " ", 
+         RowBox[{"{", 
+          RowBox[{
+           RowBox[{"Pi", "/", "2"}], ",", " ", "\"\<y\>\""}], "}"}]}], 
+        "]"}]}], "}"}], ",", "\n", "  ", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"{", 
+        RowBox[{"tau1", ",", " ", "0.001", ",", " ", 
+         RowBox[{"{", 
+          RowBox[{"0.0005", ",", " ", "0.015"}], "}"}]}], "}"}], ",", " ", 
+       RowBox[{"{", 
+        RowBox[{"tau2", ",", " ", "0.0012", ",", " ", 
+         RowBox[{"{", 
+          RowBox[{"0.0005", ",", " ", "0.015"}], "}"}]}], "}"}]}], "}"}], ",",
+      "\n", "  ", 
+     RowBox[{"BackgroundGenerator", " ", "->", " ", 
+      RowBox[{"2.", " ", "Pi", " ", "*", " ", "140.", " ", "*", " ", 
+       RowBox[{"(", 
+        RowBox[{
+         RowBox[{"opI", "[", 
+          RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", ".", " ", 
+         RowBox[{"opI", "[", 
+          RowBox[{"2", ",", " ", "\"\<z\>\""}], "]"}]}], ")"}]}]}]}], "\n", 
+    "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"rIneptLBFGS", " ", "=", " ", 
+   RowBox[{"OptimizeTransformationAmplitude", "[", 
+    RowBox[{"probINEPT", ",", " ", 
+     RowBox[{"Optimizer", " ", "->", " ", "\"\<LBFGS\>\""}], ",", " ", 
+     RowBox[{"LineSearch", " ", "->", " ", "\"\<HagerZhang\>\""}]}], "]"}]}], 
+  ";"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{"rIneptSecondOrder", " ", "=", " ", 
+    RowBox[{"OptimizeTransformationAmplitude", "[", 
+     RowBox[{"probINEPT", ",", " ", 
+      RowBox[{"Optimizer", " ", "->", " ", "\"\<HybridLBFGSNewtonCG\>\""}], ",",
+       " ", 
+      RowBox[{"BoundTransform", " ", "->", " ", "\"\<Sigmoid\>\""}]}], 
+     "]"}]}], ";"}], "\n"}], "\n", 
+ RowBox[{
+  RowBox[{"probMS", " ", "=", " ", 
+   RowBox[{"TransformationOptimizationProblem", "[", "\n", "  ", 
+    RowBox[{
+     RowBox[{
+      RowBox[{"opI", "[", 
+       RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", "->", " ", 
+      RowBox[{"2", " ", 
+       RowBox[{
+        RowBox[{"opI", "[", 
+         RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", ".", " ", 
+        RowBox[{"opI", "[", 
+         RowBox[{"2", ",", " ", "\"\<y\>\""}], "]"}]}]}]}], ",", "\n", "  ", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"{", 
+        RowBox[{
+         RowBox[{"w1", " ", "*", " ", 
+          RowBox[{"(", 
+           RowBox[{
+            RowBox[{
+             RowBox[{"Cos", "[", "p1", "]"}], " ", 
+             RowBox[{"opI", "[", 
+              RowBox[{"1", ",", " ", "\"\<x\>\""}], "]"}]}], " ", "+", " ", 
+            RowBox[{
+             RowBox[{"Sin", "[", "p1", "]"}], " ", 
+             RowBox[{"opI", "[", 
+              RowBox[{"1", ",", " ", "\"\<y\>\""}], "]"}]}]}], ")"}]}], ",", 
+         " ", "0.001"}], "}"}], ",", "\n", "   ", 
+       RowBox[{"Delay", "[", "t1", "]"}], ",", " ", 
+       RowBox[{"Pulse", "[", 
+        RowBox[{
+         RowBox[{"{", 
+          RowBox[{"1", ",", " ", "2"}], "}"}], ",", " ", 
+         RowBox[{"{", 
+          RowBox[{"Pi", ",", " ", "\"\<x\>\""}], "}"}]}], "]"}], ",", " ", 
+       RowBox[{"Delay", "[", "t2", "]"}], ",", "\n", "   ", 
+       RowBox[{"{", 
+        RowBox[{
+         RowBox[{"w2", " ", "*", " ", 
+          RowBox[{"(", 
+           RowBox[{
+            RowBox[{
+             RowBox[{"Cos", "[", "p2", "]"}], " ", 
+             RowBox[{"opI", "[", 
+              RowBox[{
+               RowBox[{"{", 
+                RowBox[{"1", ",", " ", "2"}], "}"}], ",", " ", "\"\<x\>\""}], 
+              "]"}]}], " ", "+", " ", 
+            RowBox[{
+             RowBox[{"Sin", "[", "p2", "]"}], " ", 
+             RowBox[{"opI", "[", 
+              RowBox[{
+               RowBox[{"{", 
+                RowBox[{"1", ",", " ", "2"}], "}"}], ",", " ", "\"\<y\>\""}], 
+              "]"}]}]}], ")"}]}], ",", " ", "0.001"}], "}"}]}], "}"}], ",", 
+     "\n", "  ", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"{", 
+        RowBox[{"w1", ",", " ", "1400."}], "}"}], ",", " ", 
+       RowBox[{"{", 
+        RowBox[{"p1", ",", " ", "0.2"}], "}"}], ",", " ", 
+       RowBox[{"{", 
+        RowBox[{"t1", ",", " ", "0.0012", ",", " ", 
+         RowBox[{"{", 
+          RowBox[{"0.0002", ",", " ", "0.01"}], "}"}]}], "}"}], ",", " ", 
+       RowBox[{"{", 
+        RowBox[{"t2", ",", " ", "0.0014", ",", " ", 
+         RowBox[{"{", 
+          RowBox[{"0.0002", ",", " ", "0.01"}], "}"}]}], "}"}], ",", " ", 
+       RowBox[{"{", 
+        RowBox[{"w2", ",", " ", "1400."}], "}"}], ",", " ", 
+       RowBox[{"{", 
+        RowBox[{"p2", ",", " ", "1.1"}], "}"}]}], "}"}], ",", "\n", "  ", 
+     RowBox[{"BackgroundGenerator", " ", "->", " ", 
+      RowBox[{"2.", " ", "Pi", " ", "*", " ", 
+       RowBox[{"(", 
+        RowBox[{
+         RowBox[{"40.", " ", "*", " ", 
+          RowBox[{"opI", "[", 
+           RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}], " ", "+", " ", 
+         RowBox[{"140.", " ", "*", " ", 
+          RowBox[{"(", 
+           RowBox[{
+            RowBox[{"opI", "[", 
+             RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", ".", " ", 
+            RowBox[{"opI", "[", 
+             RowBox[{"2", ",", " ", "\"\<z\>\""}], "]"}]}], ")"}]}]}], 
+        ")"}]}]}]}], "\n", "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"vgMS", " ", "=", " ", 
+   RowBox[{"VerifyTransformationOptimizationGradient", "[", "probMS", "]"}]}],
+   ";"}], "\n", 
+ RowBox[{
+  RowBox[{"vhMS", " ", "=", " ", 
+   RowBox[{"VerifyTransformationOptimizationHVP", "[", "probMS", "]"}]}], 
+  ";"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{"rMS", " ", "=", " ", 
+    RowBox[{"OptimizeTransformationAmplitude", "[", 
+     RowBox[{"probMS", ",", " ", 
+      RowBox[{"Optimizer", " ", "->", " ", "\"\<TrustRegionNewtonCG\>\""}], ",",
+       " ", 
+      RowBox[{"BoundTransform", " ", "->", " ", "\"\<Sigmoid\>\""}]}], 
+     "]"}]}], ";"}], "\n"}], "\n", 
+ RowBox[{"<|", "\n", "  ", 
+  RowBox[{
+   RowBox[{"\"\<INEPT_LBFGS_HZ\>\"", " ", "->", " ", 
+    RowBox[{"{", 
+     RowBox[{
+      RowBox[{"rIneptLBFGS", "[", "\"\<Value\>\"", "]"}], ",", " ", 
+      RowBox[{"rIneptLBFGS", "[", "\"\<Rules\>\"", "]"}]}], "}"}]}], ",", 
+   "\n", "  ", 
+   RowBox[{"\"\<INEPT_HybridNewtonCG_Sigmoid\>\"", " ", "->", " ", 
+    RowBox[{"{", 
+     RowBox[{
+      RowBox[{"rIneptSecondOrder", "[", "\"\<Value\>\"", "]"}], ",", " ", 
+      RowBox[{"rIneptSecondOrder", "[", "\"\<Iterations\>\"", "]"}], ",", " ", 
+      RowBox[{"rIneptSecondOrder", "[", "\"\<Rules\>\"", "]"}]}], "}"}]}], ",",
+    "\n", "  ", 
+   RowBox[{"\"\<MultiScale_GradRelErr\>\"", " ", "->", " ", 
+    RowBox[{"vgMS", "[", "\"\<RelativeError\>\"", "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<MultiScale_HVPRelErr\>\"", " ", "->", " ", 
+    RowBox[{"vhMS", "[", "\"\<RelativeError\>\"", "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<MultiScale_HessianAsym\>\"", " ", "->", " ", 
+    RowBox[{"vhMS", "[", "\"\<HessianMaxAsymmetry\>\"", "]"}]}], ",", "\n", 
+   "  ", 
+   RowBox[{"\"\<MultiScale_TrustRegionAmp\>\"", " ", "->", " ", 
+    RowBox[{"rMS", "[", "\"\<Value\>\"", "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<MultiScale_TrustRegionIters\>\"", " ", "->", " ", 
+    RowBox[{"rMS", "[", "\"\<Iterations\>\"", "]"}]}]}], "\n", 
+  "|>"}]}], "Input",ExpressionUUID->"a219c842-44bc-4d55-8d8e-f5cf1df2f8a7"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"bg20", " ", "=", " ", 
+   RowBox[{"2.", " ", "Pi", " ", "*", " ", 
+    RowBox[{"(", 
+     RowBox[{
+      RowBox[{"80.", " ", 
+       RowBox[{"opI", "[", 
+        RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}], " ", "+", " ", 
+      RowBox[{"140.", " ", "*", " ", 
+       RowBox[{"(", 
+        RowBox[{
+         RowBox[{"opI", "[", 
+          RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", ".", " ", 
+         RowBox[{"opI", "[", 
+          RowBox[{"2", ",", " ", "\"\<z\>\""}], "]"}]}], ")"}]}]}], ")"}]}]}],
+   ";"}], "\n", 
+ RowBox[{
+  RowBox[{"evs20", " ", "=", " ", 
+   RowBox[{"Join", "[", "\n", "  ", 
+    RowBox[{
+     RowBox[{"Table", "[", 
+      RowBox[{
+       RowBox[{"If", "[", 
+        RowBox[{
+         RowBox[{"OddQ", "[", "i", "]"}], ",", " ", 
+         RowBox[{"Pulse", "[", 
+          RowBox[{"1", ",", " ", 
+           RowBox[{"{", 
+            RowBox[{
+             RowBox[{"Pi", "/", "30"}], ",", " ", "\"\<x\>\""}], "}"}]}], 
+          "]"}], ",", " ", 
+         RowBox[{"Delay", "[", "0.0001", "]"}]}], "]"}], ",", " ", 
+       RowBox[{"{", 
+        RowBox[{"i", ",", " ", "9"}], "}"}]}], "]"}], ",", "\n", "  ", 
+     RowBox[{"{", 
+      RowBox[{"Pulse", "[", 
+       RowBox[{"1", ",", " ", 
+        RowBox[{"{", 
+         RowBox[{"bK1", ",", " ", "\"\<y\>\""}], "}"}]}], "]"}], "}"}], ",", 
+     "\n", "  ", 
+     RowBox[{"Table", "[", 
+      RowBox[{
+       RowBox[{"If", "[", 
+        RowBox[{
+         RowBox[{"OddQ", "[", "i", "]"}], ",", " ", 
+         RowBox[{"Pulse", "[", 
+          RowBox[{
+           RowBox[{"{", 
+            RowBox[{"1", ",", " ", "2"}], "}"}], ",", " ", 
+           RowBox[{"{", 
+            RowBox[{
+             RowBox[{"Pi", "/", "25"}], ",", " ", "\"\<y\>\""}], "}"}]}], 
+          "]"}], ",", " ", 
+         RowBox[{"Delay", "[", "0.0001", "]"}]}], "]"}], ",", " ", 
+       RowBox[{"{", 
+        RowBox[{"i", ",", " ", "9"}], "}"}]}], "]"}], ",", "\n", "  ", 
+     RowBox[{"{", 
+      RowBox[{"Pulse", "[", 
+       RowBox[{"2", ",", " ", 
+        RowBox[{"{", 
+         RowBox[{"bK2", ",", " ", "\"\<x\>\""}], "}"}]}], "]"}], "}"}]}], 
+    "\n", "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"probF", " ", "=", " ", 
+   RowBox[{"TransformationOptimizationProblem", "[", 
+    RowBox[{
+     RowBox[{
+      RowBox[{"opI", "[", 
+       RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", "->", " ", 
+      RowBox[{"2", " ", 
+       RowBox[{
+        RowBox[{"opI", "[", 
+         RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", ".", " ", 
+        RowBox[{"opI", "[", 
+         RowBox[{"2", ",", " ", "\"\<x\>\""}], "]"}]}]}]}], ",", " ", "evs20",
+      ",", " ", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"{", 
+        RowBox[{"bK1", ",", " ", "1.1"}], "}"}], ",", " ", 
+       RowBox[{"{", 
+        RowBox[{"bK2", ",", " ", "1.2"}], "}"}]}], "}"}], ",", " ", 
+     RowBox[{"BackgroundGenerator", " ", "->", " ", "bg20"}]}], "]"}]}], 
+  ";"}], "\n", 
+ RowBox[{
+  RowBox[{"cRaw", " ", "=", " ", 
+   RowBox[{"CompileTransformationOptimization", "[", 
+    RowBox[{"probF", ",", " ", 
+     RowBox[{"FuseStaticEvents", " ", "->", " ", "False"}], ",", " ", 
+     RowBox[{"EnableCaching", " ", "->", " ", "False"}]}], "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"cFused", " ", "=", " ", 
+   RowBox[{"CompileTransformationOptimization", "[", 
+    RowBox[{"probF", ",", " ", 
+     RowBox[{"FuseStaticEvents", " ", "->", " ", "True"}], ",", " ", 
+     RowBox[{"EnableCaching", " ", "->", " ", "True"}]}], "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{"rCache", " ", "=", " ", 
+    RowBox[{"OptimizeTransformationAmplitude", "[", 
+     RowBox[{"probF", ",", " ", 
+      RowBox[{
+      "DerivativeMethod", " ", "->", " ", "\"\<FiniteDifference\>\""}], ",", 
+      " ", 
+      RowBox[{"Optimizer", " ", "->", " ", "\"\<LBFGS\>\""}]}], "]"}]}], 
+   ";"}], "\n"}], "\n", 
+ RowBox[{"<|", "\n", "  ", 
+  RowBox[{
+   RowBox[{"\"\<RawStages\>\"", " ", "->", " ", 
+    RowBox[{"cRaw", "[", "\"\<NumStagesTotal\>\"", "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<FusedStages\>\"", " ", "->", " ", 
+    RowBox[{"cFused", "[", "\"\<NumStagesTotal\>\"", "]"}]}], ",", "\n", "  ", 
+   RowBox[{"\"\<CacheHits\>\"", " ", "->", " ", 
+    RowBox[{"rCache", "[", 
+     RowBox[{"\"\<CacheStats\>\"", ",", " ", "\"\<CacheHits\>\""}], "]"}]}], ",",
+    "\n", "  ", 
+   RowBox[{"\"\<CacheMisses\>\"", " ", "->", " ", 
+    RowBox[{"rCache", "[", 
+     RowBox[{"\"\<CacheStats\>\"", ",", " ", "\"\<CacheMisses\>\""}], "]"}]}],
+    ",", "\n", "  ", 
+   RowBox[{"\"\<FinalAmplitude\>\"", " ", "->", " ", 
+    RowBox[{"rCache", "[", "\"\<Value\>\"", "]"}]}]}], "\n", "|>"}]}], "Input",\
+ExpressionUUID->"abcfcdf2-cd0f-4953-b7fc-89a525c9be99"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Interactive Exploration", "Section",ExpressionUUID->"e1b015e5-5fb2-49c3-b011-344d8b455f94"],
+
+Cell["\<\
+Lab G2A compares bounded optimization methods on 2-spin INEPT transfer across \
+J-couplings and BoundTransform choices. Lab G2B benchmarks static event \
+fusion compression as static chain length grows.\
+\>", "Text",ExpressionUUID->"14fd34ca-ff5b-4057-89ec-48239b4b2b43"],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{
+   RowBox[{
+    RowBox[{"runLabG2A", "[", 
+     RowBox[{
+      RowBox[{"jHz_", "?", "NumericQ"}], ",", " ", "solv_String", ",", " ", 
+      "btMode_String"}], "]"}], " ", ":=", " ", 
+    RowBox[{"Module", "[", "\n", "  ", 
+     RowBox[{
+      RowBox[{"{", 
+       RowBox[{
+       "pr", ",", " ", "useDeriv", ",", " ", "useBt", ",", " ", "r", ",", " ",
+         "hist", ",", " ", "infTrace", ",", " ", "tExact"}], "}"}], ",", "\n",
+       "  ", 
+      RowBox[{
+       RowBox[{"SetSpinSystem", "[", 
+        RowBox[{"{", 
+         RowBox[{"1", ",", " ", "2"}], "}"}], "]"}], ";", "\n", "  ", 
+       RowBox[{"pr", " ", "=", " ", 
+        RowBox[{"TransformationOptimizationProblem", "[", "\n", "    ", 
+         RowBox[{
+          RowBox[{
+           RowBox[{"opI", "[", 
+            RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", "->", " ", 
+           RowBox[{"2", " ", 
+            RowBox[{
+             RowBox[{"opI", "[", 
+              RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", ".", " ", 
+             RowBox[{"opI", "[", 
+              RowBox[{"2", ",", " ", "\"\<x\>\""}], "]"}]}]}]}], ",", "\n", 
+          "    ", 
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"Pulse", "[", 
+             RowBox[{"1", ",", " ", 
+              RowBox[{"{", 
+               RowBox[{
+                RowBox[{"Pi", "/", "2"}], ",", " ", "\"\<x\>\""}], "}"}]}], 
+             "]"}], ",", " ", 
+            RowBox[{"Delay", "[", "tau1", "]"}], ",", " ", 
+            RowBox[{"Pulse", "[", 
+             RowBox[{
+              RowBox[{"{", 
+               RowBox[{"1", ",", " ", "2"}], "}"}], ",", " ", 
+              RowBox[{"{", 
+               RowBox[{"Pi", ",", " ", "\"\<x\>\""}], "}"}]}], "]"}], ",", 
+            " ", 
+            RowBox[{"Delay", "[", "tau2", "]"}], ",", " ", 
+            RowBox[{"Pulse", "[", 
+             RowBox[{
+              RowBox[{"{", 
+               RowBox[{"1", ",", " ", "2"}], "}"}], ",", " ", 
+              RowBox[{"{", 
+               RowBox[{
+                RowBox[{"Pi", "/", "2"}], ",", " ", "\"\<y\>\""}], "}"}]}], 
+             "]"}]}], "}"}], ",", "\n", "    ", 
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"{", 
+             RowBox[{"tau1", ",", " ", "0.0008", ",", " ", 
+              RowBox[{"{", 
+               RowBox[{"0.0002", ",", " ", "0.02"}], "}"}]}], "}"}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{"tau2", ",", " ", "0.0010", ",", " ", 
+              RowBox[{"{", 
+               RowBox[{"0.0002", ",", " ", "0.02"}], "}"}]}], "}"}]}], "}"}], 
+          ",", "\n", "    ", 
+          RowBox[{"BackgroundGenerator", " ", "->", " ", 
+           RowBox[{"2.", " ", "Pi", " ", "*", " ", "jHz", " ", "*", " ", 
+            RowBox[{"(", 
+             RowBox[{
+              RowBox[{"opI", "[", 
+               RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", ".", " ", 
+              RowBox[{"opI", "[", 
+               RowBox[{"2", ",", " ", "\"\<z\>\""}], "]"}]}], ")"}]}]}]}], 
+         "\n", "  ", "]"}]}], ";", "\n", "  ", 
+       RowBox[{"useDeriv", " ", "=", " ", 
+        RowBox[{"If", "[", 
+         RowBox[{
+          RowBox[{"solv", " ", "===", " ", "\"\<Powell\>\""}], ",", 
+          " ", "\"\<None\>\"", ",", " ", "Automatic"}], "]"}]}], ";", "\n", 
+       "  ", 
+       RowBox[{"useBt", " ", "=", " ", 
+        RowBox[{"If", "[", 
+         RowBox[{
+          RowBox[{
+           RowBox[{"MemberQ", "[", 
+            RowBox[{
+             RowBox[{"{", 
+              
+              RowBox[{"\"\<HybridLBFGSNewtonCG\>\"", ",", 
+               " ", "\"\<TrustRegionNewtonCG\>\"", ",", 
+               " ", "\"\<NewtonRFO\>\""}], "}"}], ",", " ", "solv"}], "]"}], 
+           " ", "&&", " ", 
+           RowBox[{"btMode", " ", "===", " ", "\"\<None\>\""}]}], ",", 
+          " ", "\"\<Sigmoid\>\"", ",", " ", "btMode"}], "]"}]}], ";", "\n", 
+       "  ", 
+       RowBox[{"r", " ", "=", " ", 
+        RowBox[{"OptimizeTransformationAmplitude", "[", 
+         RowBox[{"pr", ",", "\n", "    ", 
+          RowBox[{"Optimizer", " ", "->", " ", "solv"}], ",", "\n", "    ", 
+          RowBox[{"DerivativeMethod", " ", "->", " ", "useDeriv"}], ",", "\n",
+           "    ", 
+          RowBox[{"BoundTransform", " ", "->", " ", "useBt"}], ",", "\n", 
+          "    ", 
+          RowBox[{"RecordHistory", " ", "->", " ", "True"}]}], "\n", "  ", 
+         "]"}]}], ";", "\n", "  ", 
+       RowBox[{"hist", " ", "=", " ", 
+        RowBox[{"Lookup", "[", 
+         RowBox[{
+          RowBox[{"r", "[", "\"\<Association\>\"", "]"}], ",", 
+          " ", "\"\<ObjectiveHistory\>\"", ",", " ", 
+          RowBox[{"{", 
+           RowBox[{"r", "[", "\"\<Value\>\"", "]"}], "}"}]}], "]"}]}], ";", 
+       "\n", "  ", 
+       RowBox[{"infTrace", " ", "=", " ", 
+        RowBox[{"MapIndexed", "[", 
+         RowBox[{
+          RowBox[{
+           RowBox[{"{", 
+            RowBox[{
+             RowBox[{
+              RowBox[{"First", "[", "#2", "]"}], " ", "-", " ", "1"}], ",", 
+             " ", 
+             RowBox[{"Max", "[", 
+              RowBox[{"1.*^-16", ",", " ", 
+               RowBox[{"1.", " ", "-", " ", 
+                RowBox[{"N", "[", 
+                 RowBox[{"Re", "[", "#1", "]"}], "]"}]}]}], "]"}]}], "}"}], 
+           " ", "&"}], ",", " ", "hist"}], "]"}]}], ";", "\n", "  ", 
+       RowBox[{"tExact", " ", "=", " ", 
+        RowBox[{"1.", " ", "/", " ", 
+         RowBox[{"(", 
+          RowBox[{"2.", " ", "*", " ", "jHz"}], ")"}]}]}], ";", "\n", "  ", 
+       RowBox[{"<|", "\n", "    ", 
+        RowBox[{
+         RowBox[{"\"\<Result\>\"", " ", "->", " ", "r"}], ",", "\n", "    ", 
+         RowBox[{"\"\<Solver\>\"", " ", "->", " ", "solv"}], ",", "\n", 
+         "    ", 
+         RowBox[{"\"\<EffectiveBT\>\"", " ", "->", " ", "useBt"}], ",", "\n", 
+         "    ", 
+         RowBox[{"\"\<JHz\>\"", " ", "->", " ", "jHz"}], ",", "\n", "    ", 
+         RowBox[{"\"\<SumDelays\>\"", " ", "->", " ", 
+          RowBox[{"Total", "[", 
+           RowBox[{"r", "[", "\"\<ParametersVec\>\"", "]"}], "]"}]}], ",", 
+         "\n", "    ", 
+         RowBox[{"\"\<AnalyticalSum\>\"", " ", "->", " ", "tExact"}], ",", 
+         "\n", "    ", 
+         RowBox[{"\"\<Trace\>\"", " ", "->", " ", "infTrace"}]}], "\n", "  ", 
+        "|>"}]}]}], "\n", "]"}]}], ";"}], "\n"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{
+    RowBox[{"renderLabG2A", "[", "d_Association", "]"}], " ", ":=", " ", 
+    RowBox[{"Module", "[", 
+     RowBox[{
+      RowBox[{"{", 
+       RowBox[{"r", " ", "=", " ", 
+        RowBox[{"d", "[", "\"\<Result\>\"", "]"}]}], "}"}], ",", "\n", "  ", 
+      RowBox[{"Column", "[", 
+       RowBox[{"{", "\n", "    ", 
+        RowBox[{
+         RowBox[{"Grid", "[", 
+          RowBox[{
+           RowBox[{"{", "\n", "      ", 
+            RowBox[{
+             RowBox[{"{", 
+              RowBox[{"\"\<Solver / BoundTransform\>\"", ",", " ", 
+               RowBox[{"Row", "[", 
+                RowBox[{"{", 
+                 RowBox[{
+                  RowBox[{"d", "[", "\"\<Solver\>\"", "]"}], ",", 
+                  " ", "\"\< / \>\"", ",", " ", 
+                  RowBox[{"d", "[", "\"\<EffectiveBT\>\"", "]"}]}], "}"}], 
+                "]"}], ",", " ", "\"\<Final Amplitude\>\"", ",", " ", 
+               RowBox[{"NumberForm", "[", 
+                RowBox[{
+                 RowBox[{"r", "[", "\"\<Value\>\"", "]"}], ",", " ", "10"}], 
+                "]"}]}], "}"}], ",", "\n", "      ", 
+             RowBox[{"{", 
+              RowBox[{"\"\<tau1 + tau2 (s)\>\"", ",", " ", 
+               RowBox[{"NumberForm", "[", 
+                RowBox[{
+                 RowBox[{"d", "[", "\"\<SumDelays\>\"", "]"}], ",", " ", 
+                 "6"}], "]"}], ",", " ", "\"\<Exact 1/(2J) (s)\>\"", ",", " ", 
+               RowBox[{"NumberForm", "[", 
+                RowBox[{
+                 RowBox[{"d", "[", "\"\<AnalyticalSum\>\"", "]"}], ",", " ", 
+                 "6"}], "]"}]}], "}"}], ",", "\n", "      ", 
+             RowBox[{"{", 
+              RowBox[{"\"\<Iterations / Obj / HVP\>\"", ",", " ", 
+               RowBox[{"Row", "[", 
+                RowBox[{"{", 
+                 RowBox[{
+                  RowBox[{"r", "[", "\"\<Iterations\>\"", "]"}], ",", 
+                  " ", "\"\< / \>\"", ",", " ", 
+                  RowBox[{"r", "[", "\"\<Evaluations\>\"", "]"}], ",", 
+                  " ", "\"\< / \>\"", ",", " ", 
+                  RowBox[{"Lookup", "[", 
+                   RowBox[{
+                    RowBox[{"r", "[", "\"\<Association\>\"", "]"}], ",", 
+                    " ", "\"\<HVPEvaluations\>\"", ",", " ", "0"}], "]"}]}], 
+                 "}"}], "]"}], ",", " ", "\"\<Solve (ms)\>\"", ",", " ", 
+               RowBox[{"Round", "[", 
+                RowBox[{
+                 RowBox[{"1000.", " ", "*", " ", 
+                  RowBox[{"(", 
+                   RowBox[{
+                    RowBox[{"r", "[", "\"\<ElapsedTime\>\"", "]"}], " ", "-", 
+                    " ", 
+                    RowBox[{"r", "[", "\"\<CompileTime\>\"", "]"}]}], ")"}]}],
+                  ",", " ", "0.01"}], "]"}]}], "}"}]}], "\n", "    ", "}"}], ",",
+            " ", 
+           RowBox[{"Frame", " ", "->", " ", "All"}], ",", " ", 
+           RowBox[{"Alignment", " ", "->", " ", "Left"}]}], "]"}], ",", "\n", 
+         "    ", 
+         RowBox[{"ListLogPlot", "[", 
+          RowBox[{
+           RowBox[{"d", "[", "\"\<Trace\>\"", "]"}], ",", " ", 
+           RowBox[{"Joined", " ", "->", " ", "True"}], ",", " ", 
+           RowBox[{"PlotMarkers", " ", "->", " ", "Automatic"}], ",", "\n", 
+           "      ", 
+           RowBox[{"PlotRange", " ", "->", " ", 
+            RowBox[{"{", 
+             RowBox[{
+              RowBox[{"{", 
+               RowBox[{"0", ",", " ", "All"}], "}"}], ",", " ", 
+              RowBox[{"{", 
+               RowBox[{"1.*^-16", ",", " ", "2."}], "}"}]}], "}"}]}], ",", 
+           "\n", "      ", 
+           RowBox[{"FrameLabel", " ", "->", " ", 
+            RowBox[{"{", 
+             RowBox[{"\"\<Iteration\>\"", ",", " ", "\"\<1 - Amplitude\>\""}],
+              "}"}]}], ",", "\n", "      ", 
+           RowBox[{"PlotLabel", " ", "->", " ", 
+            RowBox[{"StringForm", "[", 
+             RowBox[{"\"\<2-Spin INEPT (J=`1` Hz): `2`\>\"", ",", " ", 
+              RowBox[{"d", "[", "\"\<JHz\>\"", "]"}], ",", " ", 
+              RowBox[{"d", "[", "\"\<Solver\>\"", "]"}]}], "]"}]}], ",", " ", 
+           
+           RowBox[{"ImageSize", " ", "->", " ", "540"}]}], "]"}]}], "\n", 
+        "  ", "}"}], "]"}]}], "\n", "]"}]}], ";"}], "\n"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{
+    RowBox[{"runLabG2B", "[", "nStatic_Integer", "]"}], " ", ":=", " ", 
+    RowBox[{"Module", "[", 
+     RowBox[{
+      RowBox[{"{", 
+       RowBox[{
+       "bg", ",", " ", "half", ",", " ", "rest", ",", " ", "evs", ",", " ", 
+        "pr", ",", " ", "cR", ",", " ", "cF", ",", " ", "oR", ",", " ", "oF", 
+        ",", " ", "x0", ",", " ", "tR", ",", " ", "tF"}], "}"}], ",", "\n", 
+      "  ", 
+      RowBox[{
+       RowBox[{"SetSpinSystem", "[", 
+        RowBox[{"{", 
+         RowBox[{"1", ",", " ", "2"}], "}"}], "]"}], ";", "\n", "  ", 
+       RowBox[{"bg", " ", "=", " ", 
+        RowBox[{"2.", " ", "Pi", " ", "*", " ", 
+         RowBox[{"(", 
+          RowBox[{
+           RowBox[{"80.", " ", 
+            RowBox[{"opI", "[", 
+             RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}]}], " ", "+", " ", 
+           RowBox[{"140.", " ", "*", " ", 
+            RowBox[{"(", 
+             RowBox[{
+              RowBox[{"opI", "[", 
+               RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", ".", " ", 
+              RowBox[{"opI", "[", 
+               RowBox[{"2", ",", " ", "\"\<z\>\""}], "]"}]}], ")"}]}]}], 
+          ")"}]}]}], ";", "\n", "  ", 
+       RowBox[{"half", " ", "=", " ", 
+        RowBox[{"Floor", "[", 
+         RowBox[{"nStatic", " ", "/", " ", "2"}], "]"}]}], ";", " ", 
+       RowBox[{"rest", " ", "=", " ", 
+        RowBox[{"nStatic", " ", "-", " ", "half"}]}], ";", "\n", "  ", 
+       RowBox[{"evs", " ", "=", " ", 
+        RowBox[{"Join", "[", "\n", "    ", 
+         RowBox[{
+          RowBox[{"Table", "[", 
+           RowBox[{
+            RowBox[{"If", "[", 
+             RowBox[{
+              RowBox[{"OddQ", "[", "i", "]"}], ",", " ", 
+              RowBox[{"Pulse", "[", 
+               RowBox[{"1", ",", " ", 
+                RowBox[{"{", 
+                 RowBox[{
+                  RowBox[{"Pi", "/", "30"}], ",", " ", "\"\<x\>\""}], "}"}]}],
+                "]"}], ",", " ", 
+              RowBox[{"Delay", "[", "0.0001", "]"}]}], "]"}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{"i", ",", " ", "half"}], "}"}]}], "]"}], ",", "\n", 
+          "    ", 
+          RowBox[{"{", 
+           RowBox[{"Pulse", "[", 
+            RowBox[{"1", ",", " ", 
+             RowBox[{"{", 
+              RowBox[{"bF1", ",", " ", "\"\<y\>\""}], "}"}]}], "]"}], "}"}], ",",
+           "\n", "    ", 
+          RowBox[{"Table", "[", 
+           RowBox[{
+            RowBox[{"If", "[", 
+             RowBox[{
+              RowBox[{"OddQ", "[", "i", "]"}], ",", " ", 
+              RowBox[{"Pulse", "[", 
+               RowBox[{
+                RowBox[{"{", 
+                 RowBox[{"1", ",", " ", "2"}], "}"}], ",", " ", 
+                RowBox[{"{", 
+                 RowBox[{
+                  RowBox[{"Pi", "/", "25"}], ",", " ", "\"\<y\>\""}], "}"}]}],
+                "]"}], ",", " ", 
+              RowBox[{"Delay", "[", "0.0001", "]"}]}], "]"}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{"i", ",", " ", "rest"}], "}"}]}], "]"}], ",", "\n", 
+          "    ", 
+          RowBox[{"{", 
+           RowBox[{"Pulse", "[", 
+            RowBox[{"2", ",", " ", 
+             RowBox[{"{", 
+              RowBox[{"bF2", ",", " ", "\"\<x\>\""}], "}"}]}], "]"}], "}"}]}],
+          "\n", "  ", "]"}]}], ";", "\n", "  ", 
+       RowBox[{"pr", " ", "=", " ", 
+        RowBox[{"TransformationOptimizationProblem", "[", 
+         RowBox[{
+          RowBox[{
+           RowBox[{"opI", "[", 
+            RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", "->", " ", 
+           RowBox[{"2", " ", 
+            RowBox[{
+             RowBox[{"opI", "[", 
+              RowBox[{"1", ",", " ", "\"\<z\>\""}], "]"}], " ", ".", " ", 
+             RowBox[{"opI", "[", 
+              RowBox[{"2", ",", " ", "\"\<x\>\""}], "]"}]}]}]}], ",", " ", 
+          "evs", ",", " ", 
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"{", 
+             RowBox[{"bF1", ",", " ", "1.1"}], "}"}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{"bF2", ",", " ", "1.2"}], "}"}]}], "}"}], ",", " ", 
+          RowBox[{"BackgroundGenerator", " ", "->", " ", "bg"}]}], "]"}]}], ";",
+        "\n", "  ", 
+       RowBox[{"cR", " ", "=", " ", 
+        RowBox[{"CompileTransformationOptimization", "[", 
+         RowBox[{"pr", ",", " ", 
+          RowBox[{"FuseStaticEvents", " ", "->", " ", "False"}], ",", " ", 
+          RowBox[{"EnableCaching", " ", "->", " ", "False"}]}], "]"}]}], ";", 
+       "\n", "  ", 
+       RowBox[{"cF", " ", "=", " ", 
+        RowBox[{"CompileTransformationOptimization", "[", 
+         RowBox[{"pr", ",", " ", 
+          RowBox[{"FuseStaticEvents", " ", "->", " ", "True"}], ",", " ", 
+          RowBox[{"EnableCaching", " ", "->", " ", "True"}]}], "]"}]}], ";", 
+       "\n", "  ", 
+       RowBox[{"oR", " ", "=", " ", 
+        RowBox[{"EvaluateTransformationOptimization", "[", 
+         RowBox[{"cR", ",", " ", 
+          RowBox[{"{", 
+           RowBox[{"1.1", ",", " ", "1.2"}], "}"}]}], "]"}]}], ";", "\n", 
+       "  ", 
+       RowBox[{"oF", " ", "=", " ", 
+        RowBox[{"EvaluateTransformationOptimization", "[", 
+         RowBox[{"cF", ",", " ", 
+          RowBox[{"{", 
+           RowBox[{"1.1", ",", " ", "1.2"}], "}"}]}], "]"}]}], ";", "\n", 
+       "  ", 
+       RowBox[{"x0", " ", "=", " ", 
+        RowBox[{"{", 
+         RowBox[{"1.1", ",", " ", "1.2"}], "}"}]}], ";", "\n", "  ", 
+       RowBox[{"tR", " ", "=", " ", 
+        RowBox[{"1000.", " ", "*", " ", 
+         RowBox[{
+          RowBox[{"First", "[", 
+           RowBox[{"AbsoluteTiming", "[", 
+            RowBox[{"Do", "[", 
+             RowBox[{
+              RowBox[{"EvaluateTransformationOptimization", "[", 
+               RowBox[{"cR", ",", " ", "x0"}], "]"}], ",", " ", 
+              RowBox[{"{", "20", "}"}]}], "]"}], "]"}], "]"}], " ", "/", " ", 
+          "20."}]}]}], ";", "\n", "  ", 
+       RowBox[{"tF", " ", "=", " ", 
+        RowBox[{"1000.", " ", "*", " ", 
+         RowBox[{
+          RowBox[{"First", "[", 
+           RowBox[{"AbsoluteTiming", "[", 
+            RowBox[{"Do", "[", 
+             RowBox[{
+              RowBox[{"EvaluateTransformationOptimization", "[", 
+               RowBox[{"cF", ",", " ", "x0"}], "]"}], ",", " ", 
+              RowBox[{"{", "20", "}"}]}], "]"}], "]"}], "]"}], " ", "/", " ", 
+          "20."}]}]}], ";", "\n", "  ", 
+       RowBox[{"<|", "\n", "    ", 
+        RowBox[{
+         RowBox[{"\"\<TotalEvents\>\"", " ", "->", " ", 
+          RowBox[{"nStatic", " ", "+", " ", "2"}]}], ",", "\n", "    ", 
+         RowBox[{"\"\<RawStages\>\"", " ", "->", " ", 
+          RowBox[{"cR", "[", "\"\<NumStagesTotal\>\"", "]"}]}], ",", "\n", 
+         "    ", 
+         RowBox[{"\"\<FusedStages\>\"", " ", "->", " ", 
+          RowBox[{"cF", "[", "\"\<NumStagesTotal\>\"", "]"}]}], ",", "\n", 
+         "    ", 
+         RowBox[{"\"\<UnfusedGradMs\>\"", " ", "->", " ", "tR"}], ",", "\n", 
+         "    ", 
+         RowBox[{"\"\<FusedGradMs\>\"", " ", "->", " ", "tF"}], ",", "\n", 
+         "    ", 
+         RowBox[{"\"\<Speedup\>\"", " ", "->", " ", 
+          RowBox[{"tR", " ", "/", " ", 
+           RowBox[{"Max", "[", 
+            RowBox[{"tF", ",", " ", "1.*^-6"}], "]"}]}]}], ",", "\n", "    ", 
+         
+         RowBox[{"\"\<GradDiff\>\"", " ", "->", " ", 
+          RowBox[{"Max", "[", 
+           RowBox[{"Abs", "[", 
+            RowBox[{
+             RowBox[{"oR", "[", "\"\<Gradient\>\"", "]"}], " ", "-", " ", 
+             RowBox[{"oF", "[", "\"\<Gradient\>\"", "]"}]}], "]"}], "]"}]}]}],
+         "\n", "  ", "|>"}]}]}], "\n", "]"}]}], ";"}], "\n"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{
+    RowBox[{"renderLabG2B", "[", "d_Association", "]"}], " ", ":=", " ", 
+    RowBox[{"Column", "[", 
+     RowBox[{"{", "\n", "  ", 
+      RowBox[{
+       RowBox[{"Grid", "[", 
+        RowBox[{
+         RowBox[{"{", "\n", "    ", 
+          RowBox[{
+           RowBox[{"{", 
+            
+            RowBox[{"\"\<Total Events / Raw Stages -> Fused Stages\>\"", ",", 
+             " ", 
+             RowBox[{"Row", "[", 
+              RowBox[{"{", 
+               RowBox[{
+                RowBox[{"d", "[", "\"\<TotalEvents\>\"", "]"}], ",", 
+                " ", "\"\< / \>\"", ",", " ", 
+                RowBox[{"d", "[", "\"\<RawStages\>\"", "]"}], ",", 
+                " ", "\"\< -> \>\"", ",", " ", 
+                RowBox[{"d", "[", "\"\<FusedStages\>\"", "]"}]}], "}"}], 
+              "]"}]}], "}"}], ",", "\n", "    ", 
+           RowBox[{"{", 
+            RowBox[{"\"\<Unfused Grad (ms/eval)\>\"", ",", " ", 
+             RowBox[{"NumberForm", "[", 
+              RowBox[{
+               RowBox[{"d", "[", "\"\<UnfusedGradMs\>\"", "]"}], ",", " ", 
+               "4"}], "]"}], ",", " ", "\"\<Fused Grad (ms/eval)\>\"", ",", 
+             " ", 
+             RowBox[{"NumberForm", "[", 
+              RowBox[{
+               RowBox[{"d", "[", "\"\<FusedGradMs\>\"", "]"}], ",", " ", 
+               "4"}], "]"}]}], "}"}], ",", "\n", "    ", 
+           RowBox[{"{", 
+            RowBox[{"\"\<Fusion Speedup\>\"", ",", " ", 
+             RowBox[{"Row", "[", 
+              RowBox[{"{", 
+               RowBox[{
+                RowBox[{"NumberForm", "[", 
+                 RowBox[{
+                  RowBox[{"d", "[", "\"\<Speedup\>\"", "]"}], ",", " ", "3"}],
+                  "]"}], ",", " ", "\"\<x\>\""}], "}"}], "]"}], ",", 
+             " ", "\"\<Max Gradient Diff\>\"", ",", " ", 
+             RowBox[{"ScientificForm", "[", 
+              RowBox[{
+               RowBox[{"d", "[", "\"\<GradDiff\>\"", "]"}], ",", " ", "2"}], 
+              "]"}]}], "}"}]}], "\n", "  ", "}"}], ",", " ", 
+         RowBox[{"Frame", " ", "->", " ", "All"}], ",", " ", 
+         RowBox[{"Alignment", " ", "->", " ", "Left"}]}], "]"}], ",", "\n", 
+       "  ", 
+       RowBox[{"BarChart", "[", 
+        RowBox[{
+         RowBox[{"{", 
+          RowBox[{
+           RowBox[{"d", "[", "\"\<UnfusedGradMs\>\"", "]"}], ",", " ", 
+           RowBox[{"d", "[", "\"\<FusedGradMs\>\"", "]"}]}], "}"}], ",", "\n",
+          "    ", 
+         RowBox[{"ChartLabels", " ", "->", " ", 
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"\"\<Unfused (\>\"", " ", "<>", " ", 
+             RowBox[{"ToString", "[", 
+              RowBox[{"d", "[", "\"\<RawStages\>\"", "]"}], "]"}], " ", "<>", 
+             " ", "\"\< stages)\>\""}], ",", " ", 
+            RowBox[{"\"\<Fused (\>\"", " ", "<>", " ", 
+             RowBox[{"ToString", "[", 
+              RowBox[{"d", "[", "\"\<FusedStages\>\"", "]"}], "]"}], " ", "<>",
+              " ", "\"\< stages)\>\""}]}], "}"}]}], ",", "\n", "    ", 
+         RowBox[{"AxesLabel", " ", "->", " ", 
+          RowBox[{"{", 
+           RowBox[{"None", ",", " ", "\"\<ms / Grad Eval\>\""}], "}"}]}], ",",
+          " ", 
+         RowBox[{
+         "PlotLabel", " ", "->", " ", "\"\<Static Event Fusion Speedup\>\""}],
+          ",", " ", 
+         RowBox[{"ImageSize", " ", "->", " ", "440"}]}], "]"}]}], "\n", "}"}],
+      "]"}]}], ";"}], "\n"}], "\n", 
+ RowBox[{
+  RowBox[{"labG2ADefault", " ", "=", " ", 
+   RowBox[{"runLabG2A", "[", 
+    RowBox[{
+    "140.", ",", " ", "\"\<HybridLBFGSNewtonCG\>\"", ",", 
+     " ", "\"\<Sigmoid\>\""}], "]"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"labG2BDefault", " ", "=", " ", 
+   RowBox[{"runLabG2B", "[", "20", "]"}]}], ";"}], "\n", 
+ RowBox[{"{", 
+  RowBox[{
+   RowBox[{
+    RowBox[{"labG2ADefault", "[", "\"\<Result\>\"", "]"}], 
+    "[", "\"\<Value\>\"", "]"}], ",", " ", 
+   RowBox[{"labG2BDefault", "[", "\"\<Speedup\>\"", "]"}]}], "}"}]}], "Input",\
+ExpressionUUID->"1c49195b-a7e8-4118-8a54-980a67f085f6"],
+
+Cell[BoxData[
+ RowBox[{"DynamicModule", "[", 
+  RowBox[{
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"jVal", " ", "=", " ", "140."}], ",", " ", 
+     RowBox[{"solv", " ", "=", " ", "\"\<HybridLBFGSNewtonCG\>\""}], ",", " ", 
+     RowBox[{"bt", " ", "=", " ", "\"\<Sigmoid\>\""}], ",", " ", 
+     RowBox[{"data", " ", "=", " ", "labG2ADefault"}]}], "}"}], ",", "\n", 
+   "  ", 
+   RowBox[{"Panel", "[", 
+    RowBox[{"Column", "[", 
+     RowBox[{"{", "\n", "    ", 
+      RowBox[{
+       RowBox[{"Grid", "[", 
+        RowBox[{
+         RowBox[{"{", "\n", "      ", 
+          RowBox[{
+           RowBox[{"{", 
+            RowBox[{"\"\<Scalar J Coupling (Hz):\>\"", ",", " ", 
+             RowBox[{"Row", "[", 
+              RowBox[{"{", 
+               RowBox[{
+                RowBox[{"Slider", "[", 
+                 RowBox[{
+                  RowBox[{"Dynamic", "[", "jVal", "]"}], ",", " ", 
+                  RowBox[{"{", 
+                   RowBox[{"60.", ",", " ", "220.", ",", " ", "20."}], 
+                   "}"}]}], "]"}], ",", " ", "\"\< \>\"", ",", " ", 
+                RowBox[{"Dynamic", "[", "jVal", "]"}]}], "}"}], "]"}]}], 
+            "}"}], ",", "\n", "      ", 
+           RowBox[{"{", 
+            RowBox[{"\"\<Solver:\>\"", ",", " ", 
+             RowBox[{"SetterBar", "[", 
+              RowBox[{
+               RowBox[{"Dynamic", "[", "solv", "]"}], ",", " ", 
+               RowBox[{"{", 
+                
+                RowBox[{"\"\<LBFGS\>\"", ",", " ", "\"\<BFGS\>\"", ",", 
+                 " ", "\"\<HybridLBFGSNewtonCG\>\"", ",", 
+                 " ", "\"\<TrustRegionNewtonCG\>\"", ",", 
+                 " ", "\"\<NewtonRFO\>\"", ",", " ", "\"\<Powell\>\""}], 
+                "}"}]}], "]"}]}], "}"}], ",", "\n", "      ", 
+           RowBox[{"{", 
+            RowBox[{"\"\<BoundTransform:\>\"", ",", " ", 
+             RowBox[{"SetterBar", "[", 
+              RowBox[{
+               RowBox[{"Dynamic", "[", "bt", "]"}], ",", " ", 
+               RowBox[{"{", 
+                RowBox[{"\"\<None\>\"", ",", " ", "\"\<Sigmoid\>\""}], 
+                "}"}]}], "]"}]}], "}"}]}], "\n", "    ", "}"}], ",", " ", 
+         RowBox[{"Alignment", " ", "->", " ", "Left"}]}], "]"}], ",", "\n", 
+       "    ", 
+       RowBox[{"Button", "[", 
+        RowBox[{"\"\<Run Bounded Lab\>\"", ",", " ", 
+         RowBox[{"data", " ", "=", " ", 
+          RowBox[{"runLabG2A", "[", 
+           RowBox[{"jVal", ",", " ", "solv", ",", " ", "bt"}], "]"}]}], ",", 
+         " ", 
+         RowBox[{"Method", " ", "->", " ", "\"\<Queued\>\""}]}], "]"}], ",", 
+       "\n", "    ", 
+       RowBox[{"Dynamic", "[", 
+        RowBox[{"renderLabG2A", "[", "data", "]"}], "]"}]}], "\n", "  ", 
+      "}"}], "]"}], "]"}]}], "\n", "]"}]], "Input",ExpressionUUID->"a5eabcba-\
+3ba2-4cda-af1a-d27205ea1573"],
+
+Cell[BoxData[
+ RowBox[{"DynamicModule", "[", 
+  RowBox[{
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"nSt", " ", "=", " ", "20"}], ",", " ", 
+     RowBox[{"fData", " ", "=", " ", "labG2BDefault"}]}], "}"}], ",", "\n", 
+   "  ", 
+   RowBox[{"Panel", "[", 
+    RowBox[{"Column", "[", 
+     RowBox[{"{", "\n", "    ", 
+      RowBox[{
+       RowBox[{"Row", "[", 
+        RowBox[{"{", 
+         RowBox[{"\"\<Number of Static Events: \>\"", ",", " ", 
+          RowBox[{"SetterBar", "[", 
+           RowBox[{
+            RowBox[{"Dynamic", "[", "nSt", "]"}], ",", " ", 
+            RowBox[{"{", 
+             RowBox[{"4", ",", " ", "16", ",", " ", "40", ",", " ", "80"}], 
+             "}"}]}], "]"}], ",", " ", "\"\<   \>\"", ",", "\n", "      ", 
+          RowBox[{"Button", "[", 
+           RowBox[{"\"\<Measure Fusion & Cache\>\"", ",", " ", 
+            RowBox[{"fData", " ", "=", " ", 
+             RowBox[{"runLabG2B", "[", "nSt", "]"}]}], ",", " ", 
+            RowBox[{"Method", " ", "->", " ", "\"\<Queued\>\""}]}], "]"}]}], 
+         "}"}], "]"}], ",", "\n", "    ", 
+       RowBox[{"Dynamic", "[", 
+        RowBox[{"renderLabG2B", "[", "fData", "]"}], "]"}]}], "\n", "  ", 
+      "}"}], "]"}], "]"}]}], "\n", "]"}]], "Input",ExpressionUUID->"31faf2e5-\
+d57c-48ef-a8ae-7c3516963905"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Suggested Experiments", "Section",ExpressionUUID->"0870634f-e2d8-4496-ad22-f265aa04a284"],
+
+Cell["\<\
+1. Note in Lab G2A that 2-spin INEPT depends on tau1 + tau2 = 1/(2J); compare \
+LBFGS and HybridLBFGSNewtonCG convergence speed and final sum across \
+different J values.\
+\>", "Item",ExpressionUUID->"d589ea5f-5c42-4420-b5ce-b258c9f719ac"],
+
+Cell["\<\
+2. In Lab G2B, increase Static Events from 4 to 80 and watch Fused Stages \
+remain constant (4) while the fusion speedup grows steadily.\
+\>", "Item",ExpressionUUID->"d8ac1f86-2617-4d3f-9d92-263af6490ae8"],
+
+Cell["\<\
+3. Notice that bounded 2nd-order solvers require BoundTransform -> \
+\"Sigmoid\" or \"Log\" (passing BoundTransform -> \"None\" cleanly emits \
+OptimalControlProblem::unconstronly).\
+\>", "Item",ExpressionUUID->"f4887bec-8e6c-4521-9ea0-27ed02890826"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Summary", "Section",ExpressionUUID->"1f04b123-c300-4338-8e70-b25c85860b5e"],
+
+Cell["\<\
+Automatic coordinate scaling, exact O(K) Hilbert HVPs, smooth Sigmoid/Log \
+bound transforms, and compile-time static fusion deliver rapid \
+quadratic/superlinear convergence on multi-scale constrained NMR problems.\
+\>", "Text",ExpressionUUID->"077ea55e-63de-4fc1-a1fd-b5303e71793e"],
+
+Cell[TextData[{
+ "Return to ",
+ StyleBox[ButtonBox["00_GeneralOptimization_Tutorials_Index.nb",
+  BaseStyle->"Hyperlink",
+  Evaluator->Automatic,
+  Method->"Preemptive",
+  ButtonFunction:>NotebookOpen[
+    FileNameJoin[{
+      NotebookDirectory[], "00_GeneralOptimization_Tutorials_Index.nb"}]]], 
+  "Hyperlink"],
+ " or continue to 03_Ensembles_TimeDependent_and_Liouville_Optimization.nb."
+}], "Item",ExpressionUUID->"11854312-a831-4151-a564-1229b15bd2d4"]
+}, Open  ]]
+},
+WindowSize->{1100, 820},
+FrontEndVersion->"14.3 for Microsoft Windows (64-bit) (July 8, 2025)",
+StyleDefinitions->"Default.nb",
+ExpressionUUID->"5419844f-6d37-4ff2-a7b5-4d74b9bdd682"
+]
+(* End of Notebook Content *)
+
+(* Internal cache information *)
+(*CellTagsOutline
+CellTagsIndex->{}
+*)
+(*CellTagsIndex
+CellTagsIndex->{}
+*)
+(*NotebookFileOutline
+Notebook[{
+Cell[554, 20, 127, 0, 70, "Title",ExpressionUUID->"dbed943b-3adf-4a5c-a674-d18b8fdb672e"],
+Cell[684, 22, 285, 4, 70, "Subtitle",ExpressionUUID->"f0f74ed1-dc23-4d74-a42c-4c78ac097f9f"],
+Cell[CellGroupData[{
+Cell[994, 30, 107, 0, 70, "Section",ExpressionUUID->"a86d17ac-20d0-4bc0-b890-820df501372b"],
+Cell[1104, 32, 179, 3, 70, "Text",ExpressionUUID->"52365ef7-b326-427e-90bb-3fd81d98bca7"],
+Cell[1286, 37, 2406, 60, 70, "Input",ExpressionUUID->"f7f95f45-36ed-4a76-a89f-7658e53aa874"],
+Cell[3695, 99, 925, 22, 70, "Input",ExpressionUUID->"65833200-2d35-443b-a321-d26692310219"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[4657, 126, 86, 0, 70, "Section",ExpressionUUID->"311c733c-daf6-457c-b495-95b8691a5068"],
+Cell[4746, 128, 372, 5, 70, "Text",ExpressionUUID->"99d97203-a7ab-467c-a7f2-29bbdfd9b2bd"],
+Cell[5121, 135, 175, 3, 70, "Item",ExpressionUUID->"2d9c5a1a-7187-42be-baf4-139c1963f876"],
+Cell[5299, 140, 228, 3, 70, "Item",ExpressionUUID->"84ce576e-3670-4cd7-954c-12f46865e976"],
+Cell[5530, 145, 191, 3, 70, "Item",ExpressionUUID->"24f7dd26-0184-4964-80c4-45b9f748cfe9"],
+Cell[5724, 150, 168, 3, 70, "Item",ExpressionUUID->"ed24ebdd-d54e-4fad-9231-119adea2a707"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[5929, 158, 97, 0, 70, "Section",ExpressionUUID->"5eb04526-2f63-4dc2-9fa1-1c238bfd05c2"],
+Cell[6029, 160, 609, 8, 70, "Text",ExpressionUUID->"3e3087e2-6a67-4c5f-92d7-8aa1dab7d90f"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[6675, 173, 88, 0, 70, "Section",ExpressionUUID->"1e553db7-3a07-4005-90ca-ae383655c3d3"],
+Cell[6766, 175, 272, 4, 70, "Text",ExpressionUUID->"84ab7706-72b8-48f2-a95e-73c1116027c0"],
+Cell[7041, 181, 8442, 211, 70, "Input",ExpressionUUID->"a219c842-44bc-4d55-8d8e-f5cf1df2f8a7"],
+Cell[15486, 394, 4706, 123, 70, "Input",ExpressionUUID->"abcfcdf2-cd0f-4953-b7fc-89a525c9be99"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[20229, 522, 97, 0, 70, "Section",ExpressionUUID->"e1b015e5-5fb2-49c3-b011-344d8b455f94"],
+Cell[20329, 524, 281, 4, 70, "Text",ExpressionUUID->"14fd34ca-ff5b-4057-89ec-48239b4b2b43"],
+Cell[20613, 530, 22219, 516, 70, "Input",ExpressionUUID->"1c49195b-a7e8-4118-8a54-980a67f085f6"],
+Cell[42835, 1048, 2806, 64, 70, "Input",ExpressionUUID->"a5eabcba-3ba2-4cda-af1a-d27205ea1573"],
+Cell[45644, 1114, 1287, 30, 70, "Input",ExpressionUUID->"31faf2e5-d57c-48ef-a8ae-7c3516963905"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[46968, 1149, 95, 0, 70, "Section",ExpressionUUID->"0870634f-e2d8-4496-ad22-f265aa04a284"],
+Cell[47066, 1151, 249, 4, 70, "Item",ExpressionUUID->"d589ea5f-5c42-4420-b5ce-b258c9f719ac"],
+Cell[47318, 1157, 215, 3, 70, "Item",ExpressionUUID->"d8ac1f86-2617-4d3f-9d92-263af6490ae8"],
+Cell[47536, 1162, 260, 4, 70, "Item",ExpressionUUID->"f4887bec-8e6c-4521-9ea0-27ed02890826"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[47833, 1171, 81, 0, 70, "Section",ExpressionUUID->"1f04b123-c300-4338-8e70-b25c85860b5e"],
+Cell[47917, 1173, 294, 4, 70, "Text",ExpressionUUID->"077ea55e-63de-4fc1-a1fd-b5303e71793e"],
+Cell[48214, 1179, 457, 11, 70, "Item",ExpressionUUID->"11854312-a831-4151-a564-1229b15bd2d4"]
+}, Open  ]]
+}
+]
+*)
+
+(* End of internal cache information *)
