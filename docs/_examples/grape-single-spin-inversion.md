@@ -16,7 +16,8 @@ $$
 \frac{\hat{H}_0}{2\pi} = 50\ \mathrm{Hz} \cdot \hat{I}_z.
 $$
 
-Each quadrature control amplitude is bounded by $$|u_x(t)|, |u_y(t)| \le 120\ \mathrm{Hz}$$. The optimization drives the Zeeman basis state $$\lvert\alpha\rangle$$ to $$\lvert\beta\rangle$$, maximizing the pure-state fidelity:
+Each quadrature control amplitude is bounded by $$\lvert u_x(t)\rvert, \lvert u_y(t)\rvert
+\le 120\ \mathrm{Hz}$$. The optimization drives the Zeeman basis state $$\lvert\alpha\rangle$$ to $$\lvert\beta\rangle$$, maximizing the pure-state fidelity:
 
 $$
 F = \left|\langle \beta \mid \hat{U}(T) \mid \alpha \rangle\right|^2.
