@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>
+    {%- if page.title and page.url != '/' -%}
+      {{ page.title | escape }} &mdash; {{ site.title | escape }}
+    {%- else -%}
+      {{ site.title | escape }} &mdash; {{ site.tagline | escape }}
+    {%- endif -%}
+  </title>
+  <meta name="description" content="{{ page.summary | default: site.description | strip_html | normalize_whitespace | escape }}">
+  <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+  {% include mathjax.html %}
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  {% include header.html %}
+  <main id="main-content" class="site-main">
+    <div class="container">
+      {{ content }}
+    </div>
+  </main>
+  {% include footer.html %}
+</body>
+</html>

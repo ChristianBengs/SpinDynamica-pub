@@ -1,0 +1,11 @@
+{% assign rel = site.data.release %}
+{% if rel.published and rel.tag != "" %}
+  {% if rel.asset_name != "" %}
+    {% assign download_url = site.repository_url | append: "/releases/download/" | append: rel.tag | append: "/" | append: rel.asset_name %}
+  {% else %}
+    {% assign download_url = site.repository_url | append: "/releases/tag/" | append: rel.tag %}
+  {% endif %}
+  <a class="btn btn-primary" href="{{ download_url }}">Download SpinDynamica {{ rel.version }}</a>
+{% else %}
+  <a class="btn btn-primary" href="{{ site.repository_url }}/releases">View Releases on GitHub</a>
+{% endif %}

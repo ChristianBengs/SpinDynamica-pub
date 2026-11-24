@@ -1,8 +1,47 @@
 title: SpinDynamica
-description: Spin dynamics simulations in Mathematica
-theme: jekyll-theme-cayman
+tagline: Symbolic and numerical spin dynamics in Mathematica
+description: >-
+  SpinDynamica is an open-source Wolfram Mathematica package for symbolic and
+  numerical spin dynamics calculations in magnetic resonance.
+url: "https://christianbengs.github.io"
+baseurl: "/SpinDynamica-pub"
+repository_url: "https://github.com/ChristianBengs/SpinDynamica-pub"
+repository_branch: "main"
 
-github:
-  is_project_page: false
+markdown: kramdown
+highlighter: rouge
+kramdown:
+  input: GFM
+  math_engine: mathjax
+  syntax_highlighter: rouge
 
-show_downloads: false
+collections:
+  documentation:
+    output: true
+    permalink: /documentation/:name/
+  examples:
+    output: true
+    permalink: /examples/:name/
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: page
+  - scope:
+      path: ""
+      type: documentation
+    values:
+      layout: page
+      section: documentation
+  - scope:
+      path: ""
+      type: examples
+    values:
+      layout: page
+      section: examples
+
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock
