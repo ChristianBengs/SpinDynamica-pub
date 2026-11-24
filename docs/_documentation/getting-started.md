@@ -25,6 +25,7 @@ $SpinDynamicaVersion
 
 Before building spin operators or running simulations, define the active spin system with `SetSpinSystem`. Shortcuts are provided for systems of spins-1/2, while explicit pairs `{label, spinQuantumNumber}` support arbitrary spin quantum numbers:
 
+{% raw %}
 ```mathematica
 (* Single spin-1/2 with label 1 *)
 SetSpinSystem[1]
@@ -35,6 +36,7 @@ SetSpinSystem[{1, 2}]
 (* Spin-1/2 coupled to a spin-1 nucleus *)
 SetSpinSystem[{{1, 1/2}, {2, 1}}]
 ```
+{% endraw %}
 
 Evaluate `SpinSystem[]` to inspect the currently active spin system.
 

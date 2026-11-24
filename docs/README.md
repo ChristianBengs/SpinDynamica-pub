@@ -22,7 +22,7 @@ This directory (`docs/`) contains the Jekyll source for the SpinDynamica GitHub 
 Edit any Markdown file under `docs/` directly. Keep these conventions in mind:
 
 - **Internal links:** Always use Liquid's `relative_url` filter so links work under the `/SpinDynamica-pub/` subpath (e.g., `[Installation]({{ '/installation/' | relative_url }})`).
-- **Mathematica code blocks:** Fence examples with ` ```mathematica ` for syntax highlighting.
+- **Mathematica code blocks:** Fence examples with ` ```mathematica ` for syntax highlighting. If a code block contains nested curly braces (`{{` or `}}`), wrap the fenced block in `{% raw %}` and `{% endraw %}` so Jekyll's Liquid parser does not treat `{{` as a template variable.
 - **Mathematics (LaTeX / MathJax):** Always use `$$ ... $$` for both inline math (inside a paragraph) and display equations (on its own paragraph surrounded by blank lines). Single `$` delimiters are intentionally disabled so Mathematica symbols such as `$Path` and `$SpinDynamicaVersion` never collide with math rendering.
 
 ## 2. Adding New Documentation Pages
