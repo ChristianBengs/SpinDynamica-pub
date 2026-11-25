@@ -121,6 +121,7 @@ Information/@
 "SD`CorrelatedEigensystems`*",
 "Events`Events`*",
 "Events`PulseSequence`*",
+"Signals`SignalExpansionKernels`*",
 "Signals`Signal`*",
 "Signals`Lineshapes`*",
 "Signals`Bruker`*",
@@ -169,6 +170,7 @@ DeclarePackage[
 (* ::Input::Initialization:: *)
 (* Load all submodules explicitly from the same SpinDynamica root directory *)
 With[{sdRoot=SpinDynamica`Private`$SpinDynamicaRootDirectory},
+    If[!MemberQ[$Path,sdRoot],PrependTo[$Path,sdRoot]];
     Needs[#[[1]],FileNameJoin[{sdRoot,#[[2]]}]]&/@{
         {"General`UserLevel`", FileNameJoin[{"General","UserLevel.m"}]},
         {"General`Miscellaneous`", FileNameJoin[{"General","Miscellaneous.m"}]},
@@ -194,6 +196,7 @@ With[{sdRoot=SpinDynamica`Private`$SpinDynamicaRootDirectory},
         {"Interactions`Interactions`", FileNameJoin[{"Interactions","Interactions.m"}]},
         {"Interactions`Hamiltonians`", FileNameJoin[{"Interactions","Hamiltonians.m"}]},
         {"Interactions`Relaxation`", FileNameJoin[{"Interactions","Relaxation.m"}]},
+        {"Signals`SignalExpansionKernels`", FileNameJoin[{"Signals","SignalExpansionKernels.m"}]},
         {"Signals`Signal`", FileNameJoin[{"Signals","Signal.m"}]},
         {"Signals`Lineshapes`", FileNameJoin[{"Signals","Lineshapes.m"}]},
         {"Signals`Bruker`", FileNameJoin[{"Signals","Bruker.m"}]},

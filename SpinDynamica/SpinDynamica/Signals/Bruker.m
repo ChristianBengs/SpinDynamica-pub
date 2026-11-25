@@ -825,8 +825,8 @@ ToSignal[BrukerSpectrum[a_Association], opts___Rule] := Module[
     specC = getComponentVector[a, "Complex"];
     (* Reorder into ascending frequency order matching Signals`Signal`FT *)
     ordered = If[n > 1 && First[freqs] > Last[freqs], Reverse[specC], specC];
-    (* Invert RotateRight[..., Floor[n/2] - 1] and divide-by-n normalization in Signals`Signal`FT *)
-    unshifted = RotateLeft[ordered, Floor[n / 2] - 1];
+    (* Invert RotateRight[..., Ceiling[n/2] - 1] and divide-by-n normalization in Signals`Signal`FT *)
+    unshifted = RotateLeft[ordered, Ceiling[n / 2] - 1];
     fid = Developer`ToPackedArray[n * InverseFourier[unshifted, FourierParameters -> {1, -1}]];
     (* Match Signals`Signal`FT grid spacing sw/n: SampleInterval = 1/swHz *)
     dt = 1. / swHz;

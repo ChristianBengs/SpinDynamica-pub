@@ -24,7 +24,8 @@ BeginPackage["Signals`Signal`",
 {"Global`",
 "SpinDynamica`",
 "General`UserLevel`",
-"General`Miscellaneous`"}
+"General`Miscellaneous`",
+"Signals`SignalExpansionKernels`"}
 ];
 
 
@@ -103,7 +104,10 @@ ZeroFill->Automatic,
 DefinedPeakTypes->{"Lorentzian"},
 PeakReductionImplemented->False,
 PeaksSnappedToFrequencyGrid->False,
-SnapPeaksToFrequencyGrid->False
+SnapPeaksToFrequencyGrid->False,
+ExpansionMethod->"Legacy",
+ExpansionTolerance->1.*^-9,
+CompilationBackend->Automatic
 };
 
 
@@ -211,8 +215,21 @@ Sequence@@Options[Signal]
 ];
 
 
+(* When opting into non-legacy ExpansionMethod without explicit DigitalFrequencyResolution, preserve exact off-grid frequencies *)
+Signal[times:{tmin_,tmax_,\[Delta]t_},{type_String,peaks_List},opts___Rule]/;
+    ((ExpansionMethod/.{opts}/.Options[Signal])=!="Legacy")&&
+    MatchQ[DigitalFrequencyResolution/.{opts},DigitalFrequencyResolution|Automatic]:=
+Signal[times,{type,peaks},
+Evaluate@SimplifyRules[
+DigitalFrequencyResolution->False,
+opts,
+Sequence@@Options[Signal]
+]
+];
+
+
 (* ::Input::Initialization:: *)
-Signal[times:{tmin_,tmax_,\[Delta]t_},{type_String,peaks_List},opts___Rule]/;MatchQ[{DigitalFrequencyResolution,ZeroFill}/.{opts}/.Options[Signal],{True|Automatic,_?NumericQ}]:=
+Signal[times:{tmin_,tmax_,\[Delta]t_},{type_String,peaks_List},opts___Rule]/;MatchQ[{DigitalFrequencyResolution,ZeroFill}/.{opts}/.Options[Signal],{True|Automatic,_?NumericQ}]&&((ExpansionMethod/.{opts}/.Options[Signal])==="Legacy"||MatchQ[DigitalFrequencyResolution/.{opts},True|_?NumericQ]):=
 Module[{ZF,nZF,T,n,\[Delta]\[Omega]},(
 ZF=ZeroFill/.{opts}/.Options[Signal];
 T=tmax-tmin;
@@ -391,24 +408,36 @@ expandPeaksOnTimes[type_String,peaks_List,tvals_List,tmin_]:=Module[
 
 Signal/:Expand[Signal[times:{tmin_,tmax_,\[Delta]t_},{type_String,peaks:{{_,_,_}..}},opts___Rule]]/;
 MatchQ[{PeaksSnappedToFrequencyGrid,PeakReductionImplemented,EmbedCoordinates,LineBroadening}/.{opts}/.Options[Signal],{False,True,False,False|None|0}]:=
-Module[{n,tvals},(
+Module[{n,tvals,meth,tol,back},(
 n=Round[Abs[(tmax-tmin)/\[Delta]t]]+1;
-If[type==="Lorentzian" && MatrixQ[peaks,NumericQ] && NumericQ[tmin] && NumericQ[\[Delta]t],
-    expandPeaksUniformGrid[type,peaks,tmin,\[Delta]t,n],
-    tvals=Table[tmin+i \[Delta]t,{i,0,n-1}];
-    expandPeaksOnTimes[type,peaks,tvals,tmin]]
+meth=ExpansionMethod/.{opts}/.Options[Signal];
+tol=ExpansionTolerance/.{opts}/.Options[Signal];
+back=CompilationBackend/.{opts}/.Options[Signal];
+If[meth=!="Legacy" &&
+   !(MatchQ[meth,"Fast"|Automatic] && ((Length[peaks]<=64 && n<=131072) || Length[peaks]*n<=65536)) &&
+   type==="Lorentzian" && MatrixQ[peaks,NumericQ] && NumericQ[tmin] && NumericQ[\[Delta]t],
+    ExpandLorentzianUniformFast[peaks,tmin,\[Delta]t,n,tmin,ExpansionMethod->meth,ExpansionTolerance->tol,CompilationBackend->back],
+    If[type==="Lorentzian" && MatrixQ[peaks,NumericQ] && NumericQ[tmin] && NumericQ[\[Delta]t],
+        expandPeaksUniformGrid[type,peaks,tmin,\[Delta]t,n],
+        tvals=Table[tmin+i \[Delta]t,{i,0,n-1}];
+        expandPeaksOnTimes[type,peaks,tvals,tmin]]]
 )];
 
 Signal/:Expand[sig:Signal[times:{tmin_,tmax_,\[Delta]t_},{type_String,peaks_List},sigopts___Rule],tvals_List,opts___Rule]/;
     (peaks==={} || MatrixQ[peaks] && Length[First[peaks]]===3):=
-Module[{lb,effPeaks,vals,embed},
+Module[{lb,effPeaks,vals,embed,meth,tol,back},
     lb=LineBroadening/.{opts,sigopts}/.Options[Signal];
+    meth=ExpansionMethod/.{opts,sigopts}/.Options[Signal];
+    tol=ExpansionTolerance/.{opts,sigopts}/.Options[Signal];
+    back=CompilationBackend/.{opts,sigopts}/.Options[Signal];
     effPeaks=Which[
         peaks==={}, {},
         MatchQ[lb,{type,_?NumericQ}], Transpose[{peaks[[All,1]],peaks[[All,2]],peaks[[All,3]]+Last[lb]/2}],
         NumericQ[lb] && type==="Lorentzian", Transpose[{peaks[[All,1]],peaks[[All,2]],peaks[[All,3]]+lb/2}],
         True, peaks];
-    vals=expandPeaksOnTimes[type,effPeaks,tvals,tmin];
+    vals=If[meth=!="Legacy" && type==="Lorentzian" && MatrixQ[effPeaks,NumericQ] && VectorQ[tvals,NumericQ] && NumericQ[tmin],
+        ExpandLorentzianTimesFast[effPeaks,tvals,tmin,ExpansionMethod->meth,ExpansionTolerance->tol,CompilationBackend->back],
+        expandPeaksOnTimes[type,effPeaks,tvals,tmin]];
     embed=EmbedCoordinates/.{opts,sigopts}/.Options[Signal];
     If[TrueQ[embed],Transpose[{tvals,vals}],vals]
 ];
@@ -717,7 +746,7 @@ MatchQ[SampleFrequency/.{opts}/.Options[FT],Automatic]&&(MatchQ[LineBroadening/.
 (* ::Input::Initialization:: *)
 FT[sig1D:{Except[_List]..},opts___Rule]/;!(EmbedCoordinates/.{opts}/.Options[FT])&&(MatchQ[LineBroadening/.{opts}/.Options[FT],None|False]):=
 (
-RotateRight[#,Floor[Length[#]/2]-1]&@
+RotateRight[#,Ceiling[Length[#]/2]-1]&@
 Fourier[
 ZeroFill[
 CorrectFirstPoint[sig1D,opts],
@@ -821,7 +850,8 @@ Module[{sw1,sw2,n1,n2,freqs},(
 {sw1,sw2}=SampleFrequency/.{opts}/.Options[FT];
 freqs=Flatten[
 Outer[List,
-Range[-(n1/2)+1,(n1/2)]*sw1/n1,Range[-(n2/2)+1,(n2/2)]*sw2/n2
+If[EvenQ[n1],Range[-(n1/2)+1,(n1/2)],Range[-Floor[n1/2],Floor[n1/2]]]*sw1/n1,
+If[EvenQ[n2],Range[-(n2/2)+1,(n2/2)],Range[-Floor[n2/2],Floor[n2/2]]]*sw2/n2
 ]
 ,1];
 Flatten/@Transpose[{freqs,Flatten[S2D]}]
@@ -856,13 +886,20 @@ CombineData[datasets_List,weights_List,opts___Rule]:=(Message[CombineData::incom
 (* ::Input::Initialization:: *)
 CombineSignalOptions[
 sigs:{Signal[times_,{type_String,_?MatrixQ},___Rule]..}
-]:=Module[{sigoptset,snappeaks,peakreds},(
+]:=Module[{sigoptset,peakreds,preserved,optSym,vals},(
 sigoptset=(List@@#[[3;;-1]])&/@sigs;
-snappeaks=Flatten[SnapPeaksToFrequencyGrid/.{sigoptset}/.Options[Signal]];
 peakreds=Flatten[PeakReductionImplemented/.{sigoptset}/.Options[Signal]];
-{
-PeakReductionImplemented->!And@@peakreds
-}
+preserved={PeakReductionImplemented->!And@@peakreds};
+Do[
+    If[AllTrue[sigoptset,MatchQ[#,{___,(optSym->_),___}]&],
+        vals=(optSym/.sigoptset);
+        If[Length[DeleteDuplicates[vals]]===1,
+            AppendTo[preserved,optSym->First[vals]]
+        ]
+    ],
+    {optSym,{DigitalFrequencyResolution,EmbedCoordinates,ExpansionMethod,ExpansionTolerance,CompilationBackend}}
+];
+preserved
 )];
 
 
@@ -881,6 +918,7 @@ times,
 {type,weightedcombinedpeaks},
 SimplifyRules[
 LineBroadening->None,
+opts,
 Sequence@@CombineSignalOptions[sigs],
 Sequence@@Options[Signal]
 ]

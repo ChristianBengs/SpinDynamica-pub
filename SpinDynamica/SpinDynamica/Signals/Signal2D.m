@@ -29,15 +29,27 @@ ClearAll[
     PositiveColor,
     NegativeColor,
     ShowProjections,
-    PositionType
+    PositionType,
+    ProjectToTPPI,
+    TPPIProcessing,
+    IndirectBandwidth,
+    StorageMode,
+    ConjugateSpectrum2D,
+    QuadratureDiagnostics
 ];
 
-SignalData2D::usage = "SignalData2D[<|...|>] represents a simulated 2D NMR time-domain dataset with rows indexed by indirect time t1 (length N1) and columns indexed by direct time t2 (length N2). Supports property queries sig[\"prop\"], Re, Im, Abs, Times, Expand, ApplyLineBroadening, ApplyApodization, CombineData, and FT.";
-Spectrum2D::usage = "Spectrum2D[<|...|>] represents a processed 2D NMR frequency-domain spectrum with rows indexed by F1 (indirect) and columns by F2 (direct). Supports property queries spec[\"prop\"], Re, Im, Abs, Times, Expand, ReflectSpectrum, CombineComplementarySpectra, CombineData, PhaseSpectrum2D, ExtractSlice, ProjectSpectrum2D, PlotSpectrum2D, and ListContourPlot.";
+SignalData2D::usage = "SignalData2D[<|...|>] represents a simulated 2D NMR time-domain dataset with rows indexed by indirect time t1 (length N1, or 2*N1 for \"TPPI\" / \"OversampledStates\") and columns indexed by direct time t2 (length N2). Supports property queries sig[\"prop\"], Re, Im, Abs, Times, Expand, ApplyLineBroadening, ApplyApodization, CombineData, ProjectToTPPI, and FT.";
+Spectrum2D::usage = "Spectrum2D[<|...|>] represents a processed 2D NMR frequency-domain spectrum with rows indexed by F1 (indirect) and columns by F2 (direct). Lossless hypercomplex quadrature data are stored via U = S_RR + i1*S_IR and V = S_RI + i1*S_II. Supports property queries spec[\"prop\"] (including \"RR\", \"IR\", \"RI\", \"II\", \"HypercomplexMagnitude\", \"Representation\"), Re, Im, Abs, Times, Expand, ReflectSpectrum, ConjugateSpectrum2D, CombineComplementarySpectra, CombineData, PhaseSpectrum2D, ExtractSlice, ProjectSpectrum2D, PlotSpectrum2D, and ListContourPlot.";
 ApplyApodization::usage = "ApplyApodization[sig2D, opts] applies a 2D window function to a SignalData2D object (or 2D matrix) using Apodization -> spec or Apodization -> {directSpec, indirectSpec}.";
 Apodization::usage = "Apodization is an option for ApplyApodization and FT specifying a window function or {directSpec, indirectSpec} pair. Supported specs include None, Automatic, fwhh, {\"Lorentzian\", fwhh}, {\"Gaussian\", fwhh}, {\"Gaussian\", lb, gb}, \"SineBell\", {\"SineBell\", shift}, \"SquaredSineBell\", and {\"SquaredSineBell\", shift}.";
 PhaseSpectrum2D::usage = "PhaseSpectrum2D[spec2D, phaseSpec] applies zero- and first-order phase corrections (in radians) to a Spectrum2D object. phaseSpec may be phi0, {phi0Direct, phi0Indirect}, or {{phi0Direct, phi1Direct}, {phi0Indirect, phi1Indirect}}.";
 PhaseCorrection::usage = "PhaseCorrection is an option for FT on SignalData2D specifying phase corrections in radians as phi0, {phi0Direct, phi0Indirect}, or {{phi0Direct, phi1Direct}, {phi0Indirect, phi1Indirect}}.";
+ProjectToTPPI::usage = "ProjectToTPPI[sig2D] projects a SignalData2D acquired with QuadratureMethod -> \"OversampledStates\" onto the equivalent native \"TPPI\" dataset via P_n = C_n Cos[n Pi/2] - S_n Sin[n Pi/2].";
+TPPIProcessing::usage = "TPPIProcessing is an option for FT on SignalData2D with QuadratureMethod -> \"TPPI\" selecting Automatic (\"RetainedHalf\"), \"RetainedHalf\", \"RealOnly\", \"Staggered\", or \"Hilbert\".";
+IndirectBandwidth::usage = "IndirectBandwidth is an option for FT on SignalData2D with QuadratureMethod -> \"OversampledStates\" selecting \"Logical\" (default, N1*zf1 rows over (-SW1/2, +SW1/2]) or \"Full\" (2*N1*zf1 rows over (-SW1, +SW1]).";
+StorageMode::usage = "StorageMode is an option for FT on SignalData2D selecting Automatic/\"Hypercomplex\" (default lossless U+i2*V storage) or \"Compact\"/\"Reduced\" (single-matrix F1-complex storage U only).";
+ConjugateSpectrum2D::usage = "ConjugateSpectrum2D[spec2D, axis] conjugates the hypercomplex spectrum along \"F1\"/\"Indirect\" (negating i1) or \"F2\"/\"Direct\" (negating i2).";
+QuadratureDiagnostics::usage = "QuadratureDiagnostics[sigOrSpec] returns a structured Association reporting quadrature encoding settings, channel Frobenius norms, phase-shift bookkeeping, and diagnostic warnings for a SignalData2D or Spectrum2D object. QuadratureDiagnostics is also an option for Signal2D (Automatic, True, \"Verbose\", False, or None).";
 ExtractSlice::usage = "ExtractSlice[spec2D, axis, pos, opts] extracts a 1D slice along \"F2\"/\"Direct\" (at fixed F1) or \"F1\"/\"Indirect\" (at fixed F2). Returns {{freq, val}, ...}.";
 ProjectSpectrum2D::usage = "ProjectSpectrum2D[spec2D, axis, opts] projects a 2D spectrum onto \"F1\" (indirect) or \"F2\" (direct) using Method -> \"Sum\", \"Max\", or \"Skyline\". Returns {{freq, val}, ...}.";
 PlotSpectrum2D::usage = "PlotSpectrum2D[spec2D, opts] renders a 2D NMR contour plot with geometric positive/negative contour levels, optional reversed NMR axes (ReverseAxes -> True), and optional 1D projections (ShowProjections -> True).";
@@ -51,12 +63,21 @@ PositionType::usage = "PositionType is an option for ExtractSlice selecting \"Fr
 
 SignalData2D::inval = "Invalid SignalData2D specification: `1`.";
 SignalData2D::baddata = "Incompatible dimensions or quadrature modes in SignalData2D operation: `1`.";
+SignalData2D::tppiprojequiv = "ProjectToTPPI computed the algebraic projection P_n = C_n Cos[n Pi/2] - S_n Sin[n Pi/2], but equivalence to native TPPI acquisition is not guaranteed because `1`.";
 Spectrum2D::inval = "Invalid Spectrum2D specification: `1`.";
 Spectrum2D::badaxis = "Unknown axis specification `1`; expected \"F1\", \"F2\", \"Indirect\", or \"Direct\".";
 Spectrum2D::badarg = "Invalid argument for 2D spectrum operation: `1`.";
+Spectrum2D::nof2phase = "Cannot apply direct-dimension (F2) phase correction to a Spectrum2D with Representation -> `1` because direct-dimension imaginary components (RI, II) are not stored. Use default hypercomplex storage or apply F2 phasing inside FT.";
+Spectrum2D::tppif1phase = "Applying indirect-dimension (F1) phase correction to a native real-only TPPI spectrum; finite damping and truncation introduce conjugate-mirror dispersion cross-talk. For exact independent F1 phasing, acquire with QuadratureMethod -> \"States\", \"StatesTPPI\", \"EchoAntiEcho\", or \"OversampledStates\".";
+Spectrum2D::pmphase = "Spectrum2D has Representation -> \"Complex\" (PhaseModulated); PhaseSpectrum2D applies a coupled complex phase-twist rotation rather than independent hypercomplex F1/F2 absorption phasing.";
+Spectrum2D::nocomp = "Component `1` is unavailable for Spectrum2D with Representation -> `2`.";
+Spectrum2D::tppihilbertzf = "TPPIProcessing -> \"Hilbert\" with indirect ZeroFill < 2 suffers from causal wrap-around distortion; use ZeroFill -> {zf2, 2} or TPPIProcessing -> \"RetainedHalf\".";
+Spectrum2D::repmerge = "Combining Spectrum2D objects with mixed representations; direct-dimension imaginary components (V) are dropped in the combined result.";
 ApplyApodization::badwin = "Unrecognized apodization window specification `1`.";
 
 Options[ApplyApodization] = {Apodization -> None};
+Options[ReflectSpectrum] = Join[Options[ReflectSpectrum] /. _Options -> {}, {}];
+If[!MemberQ[Keys[Options[ReflectSpectrum]], Axis], Options[ReflectSpectrum] = Append[Options[ReflectSpectrum], Axis -> "F1"]];
 Options[ExtractSlice] = {PositionType -> "Frequency", AxisUnits -> "Hz", Component -> "Real"};
 Options[ProjectSpectrum2D] = {Method -> "Sum", AxisUnits -> "Hz", Component -> "Real"};
 Options[PlotSpectrum2D] = {
@@ -200,11 +221,87 @@ SignalData2D /: Format[SignalData2D[assoc_Association]] := RowBox[{
     "]"
 }] // DisplayForm;
 
+computeChannelNorms2D[data_] := Which[
+    AssociationQ[data],
+        AssociationMap[Function[{k}, N[Sqrt[Total[Abs[Flatten[data[k]]]^2]]]], Keys[data]],
+    MatrixQ[data],
+        <|"Data" -> N[Sqrt[Total[Abs[Flatten[data]]^2]]]|>,
+    True,
+        <||>
+];
+
+computeQuadReport2D[objType_String, assoc_Association] := Module[
+    {meta, qm, qOrder, qSpins, autoQuadQ, hasChanPrepQ, hasChanMixQ, norms, vals, maxN, minN,
+     zeroChans, chanRatio, warnings, prepShifts, rxShifts, status, baseRep, rep},
+    meta = Lookup[assoc, "Metadata", <||>];
+    qm = Lookup[assoc, "QuadratureMethod", None];
+    qOrder = Lookup[meta, "QuadratureOrder", 1];
+    qSpins = Lookup[meta, "QuadratureSpins", All];
+    autoQuadQ = Lookup[meta, "AutomaticQuadratureEncoding", True];
+    hasChanPrepQ = Lookup[meta, "ChannelDependentPreparation", False];
+    hasChanMixQ = Lookup[meta, "ChannelDependentMixing", False];
+    norms = If[KeyExistsQ[meta, "ChannelNorms"] && AssociationQ[meta["ChannelNorms"]],
+        meta["ChannelNorms"],
+        computeChannelNorms2D[Lookup[assoc, "Data", <||>]]
+    ];
+    vals = Values[norms];
+    maxN = If[vals === {}, 0., Max[vals]];
+    minN = If[vals === {}, 0., Min[vals]];
+    zeroChans = If[Length[vals] > 1,
+        Select[Keys[norms], (maxN == 0. || norms[#] <= 1.*^-12 * maxN) &],
+        {}
+    ];
+    chanRatio = Which[
+        vals === {}, Missing["Unavailable"],
+        Length[vals] == 1, 1.,
+        minN == 0., Infinity,
+        True, N[maxN / minN]
+    ];
+    warnings = Lookup[meta, "DiagnosticWarnings", {}];
+    prepShifts = Lookup[meta, "PreparationPhaseShifts", <||>];
+    rxShifts = Lookup[meta, "ReceiverPhaseShifts", <||>];
+    status = If[warnings === {} && zeroChans === {}, "OK", "Warning"];
+    baseRep = <|
+        "ObjectType" -> objType,
+        "QuadratureMethod" -> qm,
+        "QuadratureOrder" -> qOrder,
+        "QuadratureSpins" -> qSpins,
+        "AutomaticQuadratureEncoding" -> autoQuadQ,
+        "HeteronuclearDetected" -> Lookup[meta, "HeteronuclearDetected", Missing["Unavailable"]],
+        "ChannelDependentPreparation" -> hasChanPrepQ,
+        "ChannelDependentMixing" -> hasChanMixQ,
+        "ChannelNorms" -> norms,
+        "ChannelRatio" -> chanRatio,
+        "ZeroChannels" -> zeroChans,
+        "PreparationPhaseShifts" -> prepShifts,
+        "ReceiverPhaseShifts" -> rxShifts,
+        "Warnings" -> warnings,
+        "Status" -> status
+    |>;
+    If[KeyExistsQ[meta, "NativeTPPIEquivalence"],
+        baseRep["NativeTPPIEquivalence"] = meta["NativeTPPIEquivalence"]
+    ];
+    If[objType === "Spectrum2D",
+        rep = Lookup[assoc, "Representation", "Complex"];
+        Join[baseRep, <|
+            "Representation" -> rep,
+            "HypercomplexQ" -> (MemberQ[{"Hypercomplex", "TPPIHypercomplex"}, rep] && getSpectrumV[assoc] =!= None),
+            "QuadratureCapabilities" -> Lookup[assoc, "QuadratureCapabilities", buildCapabilities[rep, qm, Join[Lookup[assoc, "Processing", <||>], <|"HasTPPIDCRow" -> KeyExistsQ[assoc, "TPPIDCRow"]|>]]],
+            "Processing" -> Lookup[assoc, "Processing", <||>]
+        |>],
+        baseRep
+    ]
+];
+
+QuadratureDiagnostics[sig:SignalData2D[assoc_Association]] := computeQuadReport2D["SignalData2D", assoc];
+QuadratureDiagnostics[spec:Spectrum2D[assoc_Association]] := computeQuadReport2D["Spectrum2D", assoc];
+
 SignalData2D[assoc_Association][prop_String] := Switch[
     prop,
     "Association", assoc,
     "Keys", Keys[assoc],
     "Dimensions", {assoc["N1"], assoc["N2"]},
+    "QuadratureReport", QuadratureDiagnostics[SignalData2D[assoc]],
     "Cos" | "Sin" | "Echo" | "AntiEcho",
         If[AssociationQ[assoc["Data"]] && KeyExistsQ[assoc["Data"], prop],
             assoc["Data"][prop],
@@ -262,16 +359,22 @@ SignalData2D /: HoldPattern[Times[a___, sig:SignalData2D[assoc_Association], b__
     SignalData2D[newAssoc]
 ];
 
+activeIndirectTimeAndTiming[assoc_Association] := Which[
+    assoc["QuadratureMethod"] === "TPPI" && KeyExistsQ[assoc, "TPPITime1"],
+        {assoc["TPPITime1"], Lookup[assoc, "TPPITiming1", assoc["Timing1"]]},
+    assoc["QuadratureMethod"] === "OversampledStates" && KeyExistsQ[assoc, "OversampledTime1"],
+        {assoc["OversampledTime1"], Lookup[assoc, "OversampledTiming1", assoc["Timing1"]]},
+    True,
+        {assoc["Time1"], assoc["Timing1"]}
+];
+
 SignalData2D /: Expand[SignalData2D[assoc_Association], opts:(_Rule|_RuleDelayed)...] := Module[
     {embedQ, compOpt, mat, t1, t2, n1, n2},
     embedQ = TrueQ[EmbedCoordinates /. {opts} /. {EmbedCoordinates -> True}];
     compOpt = Component /. {opts} /. {Component -> Automatic};
     mat = extractMainSignalMatrix[assoc, compOpt];
     If[!embedQ, Return[mat]];
-    t1 = If[assoc["QuadratureMethod"] === "TPPI" && KeyExistsQ[assoc, "TPPITime1"],
-        assoc["TPPITime1"],
-        assoc["Time1"]
-    ];
+    t1 = First[activeIndirectTimeAndTiming[assoc]];
     t2 = assoc["Time2"];
     {n1, n2} = Dimensions[mat];
     Flatten[Table[{t1[[i1]], t2[[i2]], mat[[i1, i2]]}, {i1, n1}, {i2, n2}], 1]
@@ -296,18 +399,62 @@ SignalData2D /: ApplyApodization[sig:SignalData2D[assoc_Association], opts:(_Rul
     spec = Apodization /. {opts} /. Options[ApplyApodization];
     {dirSpec, indSpec} = resolveAxisPair[spec, None];
     If[(dirSpec === None || dirSpec === False) && (indSpec === None || indSpec === False), Return[sig]];
-    t1Vec = If[assoc["QuadratureMethod"] === "TPPI" && KeyExistsQ[assoc, "TPPITime1"],
-        assoc["TPPITime1"], assoc["Time1"]
-    ];
-    t1Timing = If[assoc["QuadratureMethod"] === "TPPI" && KeyExistsQ[assoc, "TPPITiming1"],
-        assoc["TPPITiming1"], assoc["Timing1"]
-    ];
+    {t1Vec, t1Timing} = activeIndirectTimeAndTiming[assoc];
     w1 = buildWindow1D[t1Vec, t1Timing, indSpec];
     w2 = buildWindow1D[assoc["Time2"], assoc["Timing2"], dirSpec];
     If[w1 === $Failed || w2 === $Failed, Return[$Failed]];
     newAssoc = assoc;
     newAssoc["Data"] = apply2DWindowToData[assoc["Data"], w1, w2];
     newAssoc["Peaks2D"] = None;
+    SignalData2D[newAssoc]
+];
+
+ProjectToTPPI[SignalData2D[assoc_Association]] := Module[
+    {d, matC, matS, nRows, cVec, sVec, pMat, t1OS, tm1OS, meta, reasons = {}, equivStatus, newAssoc},
+    d = Lookup[assoc, "Data", $Failed];
+    If[assoc["QuadratureMethod"] =!= "OversampledStates" || !AssociationQ[d] ||
+       !KeyExistsQ[d, "Cos"] || !KeyExistsQ[d, "Sin"],
+        Message[SignalData2D::baddata, "ProjectToTPPI requires a SignalData2D with QuadratureMethod -> \"OversampledStates\"."];
+        Return[$Failed]
+    ];
+    matC = toPackedComplexMat[d["Cos"]];
+    matS = toPackedComplexMat[d["Sin"]];
+    nRows = Length[matC];
+    cVec = toPackedRealVec[Cos[Range[0., nRows - 1.] * (Pi / 2.)]];
+    sVec = toPackedRealVec[Sin[Range[0., nRows - 1.] * (Pi / 2.)]];
+    pMat = toPackedComplexMat[cVec * matC - sVec * matS];
+    {t1OS, tm1OS} = activeIndirectTimeAndTiming[assoc];
+    meta = Lookup[assoc, "Metadata", <||>];
+    If[TrueQ[Lookup[meta, "ChannelDependentPreparation", False]],
+        AppendTo[reasons, "ChannelDependentPreparation -> True"]
+    ];
+    If[TrueQ[Lookup[meta, "ChannelDependentMixing", False]],
+        AppendTo[reasons, "ChannelDependentMixing -> True"]
+    ];
+    If[Lookup[meta, "AutomaticQuadratureEncoding", True] === False &&
+       !TrueQ[Lookup[meta, "ChannelDependentPreparation", False]] &&
+       !TrueQ[Lookup[meta, "ChannelDependentMixing", False]],
+        AppendTo[reasons, "AutomaticQuadratureEncoding -> False"]
+    ];
+    If[reasons =!= {},
+        equivStatus = "NotGuaranteed";
+        Message[SignalData2D::tppiprojequiv, StringRiffle[reasons, ", "]],
+        equivStatus = "ConditionalOnCoherenceOrders"
+    ];
+    newAssoc = KeyDrop[assoc, {"OversampledTiming1", "OversampledTime1", "OversamplingFactor1"}];
+    newAssoc["Data"] = pMat;
+    newAssoc["QuadratureMethod"] = "TPPI";
+    newAssoc["TPPITiming1"] = tm1OS;
+    newAssoc["TPPITime1"] = t1OS;
+    newAssoc["Peaks2D"] = None;
+    newAssoc["Metadata"] = Join[
+        meta,
+        <|
+            "ProjectedFromOversampledStates" -> True,
+            "ProjectionFormula" -> "C_n Cos[n Pi/2] - S_n Sin[n Pi/2]",
+            "NativeTPPIEquivalence" -> equivStatus
+        |>
+    ];
     SignalData2D[newAssoc]
 ];
 
@@ -384,7 +531,7 @@ ftDirectAxis[mat_?MatrixQ, fpmf2_?NumericQ, zf2_Integer, phcDir_List] := Module[
         work
     ];
     spec = Developer`ToPackedArray[Fourier[#, FourierParameters -> {1, -1}] & /@ padded] / N[n2];
-    spec = toPackedComplexMat[RotateRight[spec, {0, Floor[n2ZF / 2] - 1}]];
+    spec = toPackedComplexMat[RotateRight[spec, {0, Ceiling[n2ZF / 2] - 1}]];
     apply1DLinearPhase[spec, phcDir[[1]], phcDir[[2]], 2]
 ];
 
@@ -399,7 +546,7 @@ ftIndirectAxis[mat_?MatrixQ, fpmf1_?NumericQ, zf1_Integer, phcInd_List] := Modul
         work
     ];
     specT = Developer`ToPackedArray[Fourier[#, FourierParameters -> {1, -1}] & /@ Transpose[padded]] / N[n1];
-    specT = toPackedComplexMat[RotateRight[Transpose[specT], {Floor[n1ZF / 2] - 1, 0}]];
+    specT = toPackedComplexMat[RotateRight[Transpose[specT], {Ceiling[n1ZF / 2] - 1, 0}]];
     apply1DLinearPhase[specT, phcInd[[1]], phcInd[[2]], 1]
 ];
 
@@ -410,22 +557,143 @@ buildFrequencyAxisHz[nPts_Integer, dt_?NumericQ] := Module[{swHz = 1. / N[dt]},
     ]
 ];
 
+resolveTPPIProcessing[opt_] := Which[
+    opt === Automatic, "RetainedHalf",
+    MemberQ[{"RetainedHalf", "RealOnly", "Staggered", "Hilbert"}, opt], opt,
+    True, Message[Spectrum2D::badarg, "TPPIProcessing must be Automatic, \"RetainedHalf\", \"RealOnly\", \"Staggered\", or \"Hilbert\"."]; $Failed
+];
+
+resolveIndirectBandwidth[opt_] := Which[
+    opt === Automatic || opt === "Logical", "Logical",
+    opt === "Full", "Full",
+    True, Message[Spectrum2D::badarg, "IndirectBandwidth must be \"Logical\" or \"Full\"."]; $Failed
+];
+
+resolveStorageMode[opt_] := Which[
+    opt === Automatic || opt === "Hypercomplex" || opt === Full, True,
+    opt === "Compact" || opt === "Reduced", False,
+    True, Message[Spectrum2D::badarg, "StorageMode must be Automatic, \"Hypercomplex\", or \"Compact\"."]; $Failed
+];
+
+buildCapabilities[rep_String, qm_, extra_Association: <||>] := Module[
+    {tppiProc, indBand, hasDCRow, halfBinModQ, f1ModQ, apoSpec, zeroingApoQ, presFullHyper, presProc, presRaw},
+    tppiProc = Lookup[extra, "TPPIProcessing", Automatic];
+    indBand = Lookup[extra, "IndirectBandwidth", "Logical"];
+    hasDCRow = TrueQ[Lookup[extra, "HasTPPIDCRow", False]];
+    halfBinModQ = TrueQ[Lookup[extra, "TPPIHalfBinModulated", False]];
+    f1ModQ = TrueQ[Lookup[extra, "TPPIF1Modified", False]];
+    apoSpec = Lookup[extra, "Apodization", {None, None}];
+    zeroingApoQ = MemberQ[Flatten[{apoSpec}], "SineBell" | {"SineBell", _} | "SquaredSineBell" | {"SquaredSineBell", _}];
+    presFullHyper = (rep === "Hypercomplex") && !(qm === "OversampledStates" && indBand === "Logical");
+    presProc = Which[
+        rep === "Hypercomplex", presFullHyper,
+        rep === "TPPIHypercomplex" && qm === "TPPI",
+            !f1ModQ && MemberQ[{"RetainedHalf", "Staggered"}, tppiProc] && (hasDCRow || halfBinModQ),
+        True, False
+    ];
+    presRaw = presProc && !zeroingApoQ;
+    <|
+        "HasDirectImaginary" -> MemberQ[{"Hypercomplex", "TPPIHypercomplex"}, rep],
+        "HasIndirectQuadrature" -> MemberQ[{"Hypercomplex", "ReducedComplex", "TPPIHypercomplex"}, rep],
+        "SupportsIndependentF2Phase" -> MemberQ[{"Hypercomplex", "TPPIHypercomplex"}, rep],
+        "SupportsIndependentF1Phase" -> (rep === "Hypercomplex"),
+        "SupportsMirrorFreeF1Phase" -> (rep === "Hypercomplex"),
+        "PreservesFullHypercomplexSpectrum" -> presFullHyper,
+        "PreservesProcessedTimeDomain" -> presProc,
+        "PreservesRawAcquisition" -> presRaw,
+        "InvertibleToTimeDomain" -> presProc,
+        "QuadratureMethod" -> qm
+    |>
+];
+
+ftHypercomplexPair[mCos_?MatrixQ, mSin_?MatrixQ, fpmfPair_List, zfPair_List, phPair_List, storeFullQ_?BooleanQ] := Module[
+    {f2c, f2s, uMat, vMat},
+    f2c = ftDirectAxis[mCos, fpmfPair[[1]], zfPair[[1]], phPair[[1]]];
+    f2s = ftDirectAxis[mSin, fpmfPair[[1]], zfPair[[1]], phPair[[1]]];
+    uMat = ftIndirectAxis[toPackedComplexMat[Re[f2c] + I * Re[f2s]], fpmfPair[[2]], zfPair[[2]], phPair[[2]]];
+    vMat = If[storeFullQ,
+        ftIndirectAxis[toPackedComplexMat[Im[f2c] + I * Im[f2s]], fpmfPair[[2]], zfPair[[2]], phPair[[2]]],
+        None
+    ];
+    {uMat, vMat}
+];
+
+ftTPPIRealHalf[realMat_?MatrixQ, fpmf1_?NumericQ, n1Log_Integer, n1ZF_Integer, phInd_List] := Module[
+    {n1TPPI, n2ZF, n1TPPIZF, work, padded, raw, dcRow, half, modVec},
+    {n1TPPI, n2ZF} = Dimensions[realMat];
+    n1TPPIZF = 2 * n1ZF;
+    work = toPackedComplexMat[realMat];
+    If[fpmf1 != 1., work[[1]] *= N[fpmf1]];
+    padded = If[n1TPPIZF > n1TPPI,
+        toPackedComplexMat[PadRight[work, {n1TPPIZF, n2ZF}, 0. + 0. I]],
+        work
+    ];
+    If[EvenQ[n1ZF],
+        raw = Transpose[Developer`ToPackedArray[Fourier[#, FourierParameters -> {1, -1}] & /@ Transpose[padded]]] / N[n1Log];
+        dcRow = toPackedRealVec[Re[raw[[1]]]];
+        half = toPackedComplexMat[raw[[2 ;; n1ZF + 1]]];
+        {apply1DLinearPhase[half, phInd[[1]], phInd[[2]], 1], dcRow, False},
+        modVec = Developer`ToPackedArray[Exp[-I * Pi * Range[0., n1TPPIZF - 1.] / N[n1TPPIZF]]];
+        raw = Transpose[Developer`ToPackedArray[Fourier[#, FourierParameters -> {1, -1}] & /@ Transpose[toPackedComplexMat[modVec * padded]]]] / N[n1Log];
+        half = toPackedComplexMat[raw[[1 ;; n1ZF]]];
+        {apply1DLinearPhase[half, phInd[[1]], phInd[[2]], 1], None, True}
+    ]
+];
+
+hilbertReconF1Real[reMat_?MatrixQ] := Module[{n1, n2, tHalf, mask, cTmp},
+    {n1, n2} = Dimensions[reMat];
+    tHalf = toPackedComplexMat[Transpose[Developer`ToPackedArray[InverseFourier[#, FourierParameters -> {1, -1}] & /@ Transpose[toPackedComplexMat[reMat]]]]];
+    mask = toPackedRealVec[Table[
+        Which[
+            k == 1, 1.,
+            k <= Ceiling[n1 / 2], 2.,
+            EvenQ[n1] && k == n1 / 2 + 1, 1.,
+            True, 0.
+        ],
+        {k, n1}
+    ]];
+    tHalf = toPackedComplexMat[mask * tHalf];
+    cTmp = toPackedComplexMat[Transpose[Developer`ToPackedArray[Fourier[#, FourierParameters -> {1, -1}] & /@ Transpose[tHalf]]]];
+    toPackedComplexMat[toPackedRealMat[Re[reMat]] + I * toPackedRealMat[Im[cTmp]]]
+];
+
+phaseUVF2[uMat_?MatrixQ, vMat_?MatrixQ, ph02_?NumericQ, ph12_?NumericQ] := Module[
+    {n2 = Dimensions[uMat][[2]], ramp, c2, s2},
+    If[ph02 == 0. && ph12 == 0., Return[{toPackedComplexMat[uMat], toPackedComplexMat[vMat]}]];
+    ramp = N[Re[ph02]] + N[Re[ph12]] * Range[0., n2 - 1.] / Max[1., n2 - 1.];
+    c2 = toPackedRealVec[Cos[ramp]];
+    s2 = toPackedRealVec[Sin[ramp]];
+    {toPackedComplexMat[Transpose[c2 * Transpose[uMat] - s2 * Transpose[vMat]]],
+     toPackedComplexMat[Transpose[s2 * Transpose[uMat] + c2 * Transpose[vMat]]]}
+];
+
 SignalData2D /: FT[sig:SignalData2D[assoc_Association], opts:(_Rule|_RuleDelayed)...] := Module[
-    {lbOpt, apoOpt, zfOpt, fpmfOpt, phOpt, zfPair, fpmfPair, phPair,
+    {lbOpt, apoOpt, zfOpt, fpmfOpt, phOpt, tppiProcOpt, indBandOpt, storageOpt,
+     zfPair, fpmfPair, phPair, tppiProc, indBand, storeFullQ,
      sigProc, procAssoc, dProc, qm, n1Log, n2, dt1, dt2, n1ZF, n2ZF,
-     specMat, f2c, f2s, hMat, mCos, mSin, f2Real, n1TPPI, n1TPPIZF, rawTPPI,
-     freq1, freq2},
+     n1Out, dt1Out, uMat, vMat = None, repType, tppiDC = None, tppiHalfBinModQ = False,
+     f2c, f2s, uFull, vFull, idxRange, mCos, mSin, dcU, dcV,
+     cEven, sOdd, hdVec, u0, v0, freq1, freq2, specAssoc},
 
     lbOpt = LineBroadening /. {opts} /. Options[FT];
     apoOpt = Apodization /. {opts} /. Options[ApplyApodization];
     zfOpt = ZeroFill /. {opts} /. Options[FT];
     fpmfOpt = FirstPointMultiplicationFactor /. {opts} /. Options[FT];
     phOpt = PhaseCorrection /. {opts} /. {PhaseCorrection -> {{0., 0.}, {0., 0.}}};
+    tppiProcOpt = TPPIProcessing /. {opts} /. {TPPIProcessing -> Automatic};
+    indBandOpt = IndirectBandwidth /. {opts} /. {IndirectBandwidth -> "Logical"};
+    storageOpt = StorageMode /. {opts} /. {StorageMode -> Automatic};
 
     zfPair = resolveZeroFillPair[zfOpt];
     fpmfPair = resolveFpmfPair[fpmfOpt];
     phPair = resolvePhasePair[phOpt];
-    If[zfPair === $Failed || fpmfPair === $Failed || phPair === $Failed, Return[$Failed]];
+    tppiProc = resolveTPPIProcessing[tppiProcOpt];
+    indBand = resolveIndirectBandwidth[indBandOpt];
+    storeFullQ = resolveStorageMode[storageOpt];
+    If[zfPair === $Failed || fpmfPair === $Failed || phPair === $Failed ||
+       tppiProc === $Failed || indBand === $Failed || !BooleanQ[storeFullQ],
+        Return[$Failed]
+    ];
 
     sigProc = sig;
     If[!MatchQ[lbOpt, None | False],
@@ -445,8 +713,10 @@ SignalData2D /: FT[sig:SignalData2D[assoc_Association], opts:(_Rule|_RuleDelayed
     dt1 = N[procAssoc["Timing1"][[3]]];
     dt2 = N[procAssoc["Timing2"][[3]]];
     {n2ZF, n1ZF} = {zfPair[[1]] * n2, zfPair[[2]] * n1Log};
+    n1Out = n1ZF;
+    dt1Out = dt1;
 
-    specMat = Which[
+    Which[
         qm === "PhaseModulated" || qm === None,
             Module[{work = toPackedComplexMat[dProc], padded, s},
                 If[fpmfPair[[1]] != 1., work[[All, 1]] *= fpmfPair[[1]]];
@@ -456,61 +726,155 @@ SignalData2D /: FT[sig:SignalData2D[assoc_Association], opts:(_Rule|_RuleDelayed
                     work
                 ];
                 s = toPackedComplexMat[Fourier[padded, FourierParameters -> {1, -1}] / N[n1Log * n2]];
-                s = toPackedComplexMat[RotateRight[s, {Floor[n1ZF / 2] - 1, Floor[n2ZF / 2] - 1}]];
+                s = toPackedComplexMat[RotateRight[s, {Ceiling[n1ZF / 2] - 1, Ceiling[n2ZF / 2] - 1}]];
                 s = apply1DLinearPhase[s, phPair[[1, 1]], phPair[[1, 2]], 2];
-                apply1DLinearPhase[s, phPair[[2, 1]], phPair[[2, 2]], 1]
+                uMat = apply1DLinearPhase[s, phPair[[2, 1]], phPair[[2, 2]], 1];
+                vMat = None;
+                repType = "Complex"
             ],
         qm === "States" || qm === "StatesTPPI",
-            f2c = ftDirectAxis[dProc["Cos"], fpmfPair[[1]], zfPair[[1]], phPair[[1]]];
-            f2s = ftDirectAxis[dProc["Sin"], fpmfPair[[1]], zfPair[[1]], phPair[[1]]];
-            hMat = toPackedComplexMat[Re[f2c] + I * Re[f2s]];
-            ftIndirectAxis[hMat, fpmfPair[[2]], zfPair[[2]], phPair[[2]]],
+            {uMat, vMat} = ftHypercomplexPair[dProc["Cos"], dProc["Sin"], fpmfPair, zfPair, phPair, storeFullQ];
+            repType = If[storeFullQ, "Hypercomplex", "ReducedComplex"],
         qm === "EchoAntiEcho",
             mCos = toPackedComplexMat[dProc["Echo"] + dProc["AntiEcho"]];
             mSin = toPackedComplexMat[(-I) * (dProc["Echo"] - dProc["AntiEcho"])];
-            f2c = ftDirectAxis[mCos, fpmfPair[[1]], zfPair[[1]], phPair[[1]]];
-            f2s = ftDirectAxis[mSin, fpmfPair[[1]], zfPair[[1]], phPair[[1]]];
-            hMat = toPackedComplexMat[Re[f2c] + I * Re[f2s]];
-            ftIndirectAxis[hMat, fpmfPair[[2]], zfPair[[2]], phPair[[2]]],
-        qm === "TPPI",
-            n1TPPI = Length[dProc];
-            n1TPPIZF = 2 * n1ZF;
-            f2c = ftDirectAxis[dProc, fpmfPair[[1]], zfPair[[1]], phPair[[1]]];
-            f2Real = toPackedComplexMat[Re[f2c] + 0. I];
-            If[fpmfPair[[2]] != 1., f2Real[[1]] *= fpmfPair[[2]]];
-            If[n1TPPIZF > n1TPPI,
-                f2Real = toPackedComplexMat[PadRight[f2Real, {n1TPPIZF, n2ZF}, 0. + 0. I]]
+            {uMat, vMat} = ftHypercomplexPair[mCos, mSin, fpmfPair, zfPair, phPair, storeFullQ];
+            repType = If[storeFullQ, "Hypercomplex", "ReducedComplex"],
+        qm === "OversampledStates",
+            {uFull, vFull} = ftHypercomplexPair[dProc["Cos"], dProc["Sin"], fpmfPair, zfPair, {phPair[[1]], {0., 0.}}, storeFullQ];
+            If[indBand === "Logical",
+                idxRange = If[EvenQ[n1ZF],
+                    (n1ZF / 2 + 1) ;; (3 * n1ZF / 2),
+                    (n1ZF - Floor[n1ZF / 2]) ;; (n1ZF + Floor[n1ZF / 2])
+                ];
+                uMat = apply1DLinearPhase[toPackedComplexMat[uFull[[idxRange]]], phPair[[2, 1]], phPair[[2, 2]], 1];
+                vMat = If[storeFullQ,
+                    apply1DLinearPhase[toPackedComplexMat[vFull[[idxRange]]], phPair[[2, 1]], phPair[[2, 2]], 1],
+                    None
+                ];
+                n1Out = n1ZF;
+                dt1Out = dt1,
+                uMat = apply1DLinearPhase[uFull, phPair[[2, 1]], phPair[[2, 2]], 1];
+                vMat = If[storeFullQ, apply1DLinearPhase[vFull, phPair[[2, 1]], phPair[[2, 2]], 1], None];
+                n1Out = Length[uFull];
+                dt1Out = 0.5 * dt1
             ];
-            (* Real TPPI splits cosine power across +/- Omega; dividing by n1Log = (n1TPPI/2) matches States amplitude *)
-            rawTPPI = Transpose[Developer`ToPackedArray[Fourier[#, FourierParameters -> {1, -1}] & /@ Transpose[f2Real]]] / N[n1Log];
-            specMat = toPackedComplexMat[rawTPPI[[2 ;; n1ZF + 1]]];
-            apply1DLinearPhase[specMat, phPair[[2, 1]], phPair[[2, 2]], 1],
+            repType = If[storeFullQ, "Hypercomplex", "ReducedComplex"],
+        qm === "TPPI",
+            f2c = ftDirectAxis[dProc, fpmfPair[[1]], zfPair[[1]], phPair[[1]]];
+            Switch[tppiProc,
+                "RealOnly",
+                    {uMat, dcU, tppiHalfBinModQ} = ftTPPIRealHalf[toPackedRealMat[Re[f2c]], fpmfPair[[2]], n1Log, n1ZF, phPair[[2]]];
+                    vMat = None;
+                    repType = "ReducedComplex";
+                    tppiDC = If[dcU =!= None, <|"U" -> dcU|>, None],
+                "RetainedHalf",
+                    {uMat, dcU, tppiHalfBinModQ} = ftTPPIRealHalf[toPackedRealMat[Re[f2c]], fpmfPair[[2]], n1Log, n1ZF, phPair[[2]]];
+                    If[storeFullQ,
+                        {vMat, dcV, tppiHalfBinModQ} = ftTPPIRealHalf[toPackedRealMat[Im[f2c]], fpmfPair[[2]], n1Log, n1ZF, phPair[[2]]];
+                        repType = "TPPIHypercomplex";
+                        tppiDC = If[dcU =!= None, <|"U" -> dcU, "V" -> dcV|>, None],
+                        vMat = None;
+                        repType = "ReducedComplex";
+                        tppiDC = If[dcU =!= None, <|"U" -> dcU|>, None]
+                    ],
+                "Staggered",
+                    cEven = toPackedComplexMat[Table[(-1.)^(m - 1) * f2c[[2 * m - 1]], {m, n1Log}]];
+                    sOdd = toPackedComplexMat[Table[(-1.)^m * f2c[[2 * m]], {m, n1Log}]];
+                    hdVec = Developer`ToPackedArray[Exp[-I * Pi * buildFrequencyAxisHz[n1ZF, dt1] * dt1]];
+                    u0 = toPackedComplexMat[
+                        ftIndirectAxis[toPackedRealMat[Re[cEven]], fpmfPair[[2]], zfPair[[2]], {0., 0.}] +
+                        I * hdVec * ftIndirectAxis[toPackedRealMat[Re[sOdd]], 1.0, zfPair[[2]], {0., 0.}]
+                    ];
+                    uMat = apply1DLinearPhase[u0, phPair[[2, 1]], phPair[[2, 2]], 1];
+                    tppiHalfBinModQ = OddQ[n1ZF];
+                    If[EvenQ[n1ZF],
+                        dcU = Module[{wR = toPackedRealMat[Re[f2c]]},
+                            If[fpmfPair[[2]] != 1., wR[[1]] *= N[fpmfPair[[2]]]];
+                            toPackedRealVec[Total[wR] / N[n1Log]]
+                        ],
+                        dcU = None
+                    ];
+                    If[storeFullQ,
+                        v0 = toPackedComplexMat[
+                            ftIndirectAxis[toPackedRealMat[Im[cEven]], fpmfPair[[2]], zfPair[[2]], {0., 0.}] +
+                            I * hdVec * ftIndirectAxis[toPackedRealMat[Im[sOdd]], 1.0, zfPair[[2]], {0., 0.}]
+                        ];
+                        vMat = apply1DLinearPhase[v0, phPair[[2, 1]], phPair[[2, 2]], 1];
+                        repType = "TPPIHypercomplex";
+                        If[EvenQ[n1ZF],
+                            dcV = Module[{wI = toPackedRealMat[Im[f2c]]},
+                                If[fpmfPair[[2]] != 1., wI[[1]] *= N[fpmfPair[[2]]]];
+                                toPackedRealVec[Total[wI] / N[n1Log]]
+                            ];
+                            tppiDC = <|"U" -> dcU, "V" -> dcV|>,
+                            tppiDC = None
+                        ],
+                        vMat = None;
+                        repType = "ReducedComplex";
+                        tppiDC = If[dcU =!= None, <|"U" -> dcU|>, None]
+                    ],
+                "Hilbert",
+                    If[zfPair[[2]] < 2, Message[Spectrum2D::tppihilbertzf]];
+                    {u0, dcU, tppiHalfBinModQ} = ftTPPIRealHalf[toPackedRealMat[Re[f2c]], fpmfPair[[2]], n1Log, n1ZF, {0., 0.}];
+                    uMat = apply1DLinearPhase[hilbertReconF1Real[toPackedRealMat[Re[u0]]], phPair[[2, 1]], phPair[[2, 2]], 1];
+                    If[storeFullQ,
+                        {v0, dcV, tppiHalfBinModQ} = ftTPPIRealHalf[toPackedRealMat[Im[f2c]], fpmfPair[[2]], n1Log, n1ZF, {0., 0.}];
+                        vMat = apply1DLinearPhase[hilbertReconF1Real[toPackedRealMat[Re[v0]]], phPair[[2, 1]], phPair[[2, 2]], 1];
+                        repType = "TPPIHypercomplex";
+                        tppiDC = If[dcU =!= None, <|"U" -> dcU, "V" -> dcV|>, None],
+                        vMat = None;
+                        repType = "ReducedComplex";
+                        tppiDC = If[dcU =!= None, <|"U" -> dcU|>, None]
+                    ]
+            ],
         True,
             Message[Spectrum2D::badarg, "Unsupported QuadratureMethod in FT: " <> ToString[qm]];
             Return[$Failed]
     ];
 
-    freq1 = buildFrequencyAxisHz[n1ZF, dt1];
+    freq1 = buildFrequencyAxisHz[n1Out, dt1Out];
     freq2 = buildFrequencyAxisHz[n2ZF, dt2];
 
-    Spectrum2D[<|
-        "Data" -> specMat,
+    specAssoc = <|
+        "Data" -> uMat,
+        "ImaginaryDirectData" -> vMat,
         "Frequency1" -> freq1,
         "Frequency2" -> freq2,
-        "SpectralWidth1Hz" -> 1. / dt1,
+        "SpectralWidth1Hz" -> 1. / dt1Out,
         "SpectralWidth2Hz" -> 1. / dt2,
-        "N1" -> n1ZF,
+        "N1" -> n1Out,
         "N2" -> n2ZF,
         "QuadratureMethod" -> qm,
-        "Processing" -> <|
-            "ZeroFill" -> zfPair,
-            "FirstPointMultiplicationFactor" -> fpmfPair,
-            "LineBroadening" -> resolveAxisPair[lbOpt, None],
-            "Apodization" -> resolveAxisPair[apoOpt, None],
-            "PhaseCorrection" -> phPair
-        |>,
+        "Representation" -> repType,
+        "QuadratureCapabilities" -> buildCapabilities[repType, qm, <|
+            "TPPIProcessing" -> tppiProc,
+            "IndirectBandwidth" -> indBand,
+            "HasTPPIDCRow" -> AssociationQ[tppiDC],
+            "TPPIHalfBinModulated" -> tppiHalfBinModQ,
+            "TPPIF1Modified" -> False,
+            "Apodization" -> resolveAxisPair[apoOpt, None]
+        |>],
+        "Processing" -> Join[
+            <|
+                "ZeroFill" -> zfPair,
+                "FirstPointMultiplicationFactor" -> fpmfPair,
+                "LineBroadening" -> resolveAxisPair[lbOpt, None],
+                "Apodization" -> resolveAxisPair[apoOpt, None],
+                "PhaseCorrection" -> phPair,
+                "StorageMode" -> If[storeFullQ, "Hypercomplex", "Compact"]
+            |>,
+            If[qm === "TPPI", <|"TPPIProcessing" -> tppiProc, "TPPIHalfBinModulated" -> tppiHalfBinModQ|>, <||>],
+            If[qm === "OversampledStates", <|"IndirectBandwidth" -> indBand|>, <||>]
+        ],
         "Metadata" -> Lookup[procAssoc, "Metadata", <||>]
-    |>]
+    |>;
+    If[qm === "TPPI" && AssociationQ[tppiDC], specAssoc["TPPIDCRow"] = tppiDC];
+    If[qm === "OversampledStates",
+        specAssoc["LogicalN1"] = n1ZF;
+        specAssoc["LogicalSpectralWidth1Hz"] = 1. / dt1
+    ];
+    Spectrum2D[specAssoc]
 ];
 
 (* Compact formatting & accessors for Spectrum2D *)
@@ -524,53 +888,167 @@ Spectrum2D /: Format[Spectrum2D[assoc_Association]] := RowBox[{
     " Hz]"
 }] // DisplayForm;
 
-Spectrum2D[assoc_Association][prop_String] := Switch[
-    prop,
-    "Association", assoc,
-    "Keys", Keys[assoc],
-    "Dimensions", {assoc["N1"], assoc["N2"]},
-    "Real", toPackedRealMat[Re[assoc["Data"]]],
-    "Imaginary", toPackedRealMat[Im[assoc["Data"]]],
-    "Magnitude", toPackedRealMat[Abs[assoc["Data"]]],
-    "AngularFrequency1", toPackedRealVec[2. * Pi * assoc["Frequency1"]],
-    "AngularFrequency2", toPackedRealVec[2. * Pi * assoc["Frequency2"]],
-    _, Lookup[assoc, prop, Lookup[Lookup[assoc, "Metadata", <||>], prop, Missing["KeyAbsent", prop]]]
+getSpectrumV[assoc_Association] := Lookup[assoc, "ImaginaryDirectData", None];
+
+hypercomplexMagnitudeMat[assoc_Association] := With[
+    {u = assoc["Data"], v = getSpectrumV[assoc]},
+    If[v === None,
+        toPackedRealMat[Abs[u]],
+        toPackedRealMat[Sqrt[Abs[u]^2 + Abs[v]^2]]
+    ]
+];
+
+Spectrum2D[assoc_Association][prop_String] := With[{v = getSpectrumV[assoc], rep = Lookup[assoc, "Representation", "Complex"]},
+    Switch[
+        prop,
+        "Association", assoc,
+        "Keys", Keys[assoc],
+        "Dimensions", {assoc["N1"], assoc["N2"]},
+        "U", assoc["Data"],
+        "V", If[v === None, Missing["ComponentUnavailable", "V"], v],
+        "Real" | "RR", toPackedRealMat[Re[assoc["Data"]]],
+        "Imaginary" | "IR", toPackedRealMat[Im[assoc["Data"]]],
+        "RI", If[v === None, Missing["ComponentUnavailable", "RI"], toPackedRealMat[Re[v]]],
+        "II", If[v === None, Missing["ComponentUnavailable", "II"], toPackedRealMat[Im[v]]],
+        "Magnitude" | "HypercomplexMagnitude", hypercomplexMagnitudeMat[assoc],
+        "Components",
+            If[v === None,
+                <|"RR" -> toPackedRealMat[Re[assoc["Data"]]], "IR" -> toPackedRealMat[Im[assoc["Data"]]]|>,
+                <|"RR" -> toPackedRealMat[Re[assoc["Data"]]], "IR" -> toPackedRealMat[Im[assoc["Data"]]],
+                  "RI" -> toPackedRealMat[Re[v]], "II" -> toPackedRealMat[Im[v]]|>
+            ],
+        "HypercomplexData", If[v === None, <|"U" -> assoc["Data"]|>, <|"U" -> assoc["Data"], "V" -> v|>],
+        "Representation", rep,
+        "HypercomplexQ", MemberQ[{"Hypercomplex", "TPPIHypercomplex"}, rep] && v =!= None,
+        "QuadratureCapabilities", Lookup[assoc, "QuadratureCapabilities", buildCapabilities[rep, Lookup[assoc, "QuadratureMethod", None], Join[Lookup[assoc, "Processing", <||>], <|"HasTPPIDCRow" -> KeyExistsQ[assoc, "TPPIDCRow"]|>]]],
+        "QuadratureReport", QuadratureDiagnostics[Spectrum2D[assoc]],
+        "AngularFrequency1", toPackedRealVec[2. * Pi * assoc["Frequency1"]],
+        "AngularFrequency2", toPackedRealVec[2. * Pi * assoc["Frequency2"]],
+        _, Lookup[assoc, prop, Lookup[Lookup[assoc, "Metadata", <||>], prop, Missing["KeyAbsent", prop]]]
+    ]
 ];
 
 Spectrum2D /: Re[Spectrum2D[assoc_Association]] := toPackedRealMat[Re[assoc["Data"]]];
 Spectrum2D /: Im[Spectrum2D[assoc_Association]] := toPackedRealMat[Im[assoc["Data"]]];
-Spectrum2D /: Abs[Spectrum2D[assoc_Association]] := toPackedRealMat[Abs[assoc["Data"]]];
+Spectrum2D /: Abs[Spectrum2D[assoc_Association]] := hypercomplexMagnitudeMat[assoc];
 
 Spectrum2D /: HoldPattern[Times[a___, spec:Spectrum2D[assoc_Association], b___]] /;
-    AllTrue[{a, b}, NumericQ] := Module[{newAssoc = assoc, c = N[Times[a, b]]},
+    AllTrue[{a, b}, NumericQ] := Module[{newAssoc = assoc, c = N[Times[a, b]], v = getSpectrumV[assoc]},
     newAssoc["Data"] = toPackedComplexMat[c * assoc["Data"]];
+    If[v =!= None, newAssoc["ImaginaryDirectData"] = toPackedComplexMat[c * v]];
+    If[KeyExistsQ[assoc, "TPPIDCRow"] && AssociationQ[assoc["TPPIDCRow"]],
+        newAssoc["TPPIDCRow"] = AssociationMap[#[[1]] -> toPackedRealVec[c * #[[2]]] &, assoc["TPPIDCRow"]]
+    ];
     Spectrum2D[newAssoc]
 ];
 
+reflectMatAxis[mat_?MatrixQ, axis_String] := Which[
+    axis === "F1" || axis === "Indirect",
+        If[EvenQ[Length[mat]],
+            toPackedComplexMat[RotateLeft[Reverse[mat], 1]],
+            toPackedComplexMat[Reverse[mat]]
+        ],
+    axis === "F2" || axis === "Direct",
+        If[EvenQ[Dimensions[mat][[2]]],
+            toPackedComplexMat[RotateLeft[#, 1] & /@ (Reverse /@ mat)],
+            toPackedComplexMat[Reverse /@ mat]
+        ],
+    True,
+        Message[Spectrum2D::badaxis, axis]; $Failed
+];
+
+reflectVec1D[vec_List] := If[EvenQ[Length[vec]],
+    toPackedRealVec[RotateLeft[Reverse[vec], 1]],
+    toPackedRealVec[Reverse[vec]]
+];
+
 Spectrum2D /: ReflectSpectrum[Spectrum2D[assoc_Association], opts:(_Rule|_RuleDelayed)...] := Module[
-    {newAssoc = assoc, mat = assoc["Data"]},
-    If[OddQ[Length[mat]],
-        Message[Spectrum2D::badarg, "ReflectSpectrum requires an even number of indirect-dimension points."];
-        Return[$Failed]
+    {axisOpt, uRef, v = getSpectrumV[assoc], vRef, newAssoc = assoc, rep = Lookup[assoc, "Representation", "Complex"], qm = Lookup[assoc, "QuadratureMethod", None]},
+    axisOpt = Axis /. {opts} /. Options[ReflectSpectrum];
+    uRef = reflectMatAxis[assoc["Data"], axisOpt];
+    If[uRef === $Failed, Return[$Failed]];
+    newAssoc["Data"] = uRef;
+    If[v =!= None,
+        vRef = reflectMatAxis[v, axisOpt];
+        newAssoc["ImaginaryDirectData"] = vRef
     ];
-    newAssoc["Data"] = toPackedComplexMat[RotateLeft[Reverse[mat], 1]];
+    If[(axisOpt === "F2" || axisOpt === "Direct") && KeyExistsQ[assoc, "TPPIDCRow"] && AssociationQ[assoc["TPPIDCRow"]],
+        newAssoc["TPPIDCRow"] = AssociationMap[#[[1]] -> reflectVec1D[#[[2]]] &, assoc["TPPIDCRow"]]
+    ];
+    If[(axisOpt === "F1" || axisOpt === "Indirect") && rep === "TPPIHypercomplex",
+        newAssoc = KeyDrop[newAssoc, "TPPIDCRow"];
+        newAssoc["Processing"] = Join[Lookup[newAssoc, "Processing", <||>], <|"TPPIF1Modified" -> True|>];
+        newAssoc["QuadratureCapabilities"] = buildCapabilities[
+            rep, qm, Join[newAssoc["Processing"], <|"HasTPPIDCRow" -> KeyExistsQ[newAssoc, "TPPIDCRow"]|>]
+        ]
+    ];
     Spectrum2D[newAssoc]
+];
+
+ConjugateSpectrum2D[Spectrum2D[assoc_Association], axis_String: "F1"] := Module[
+    {v = getSpectrumV[assoc], rep = Lookup[assoc, "Representation", "Complex"], newAssoc = assoc},
+    Which[
+        axis === "F1" || axis === "Indirect",
+            newAssoc["Data"] = toPackedComplexMat[Conjugate[assoc["Data"]]];
+            If[v =!= None, newAssoc["ImaginaryDirectData"] = toPackedComplexMat[Conjugate[v]]];
+            Spectrum2D[newAssoc],
+        axis === "F2" || axis === "Direct",
+            Which[
+                v =!= None,
+                    newAssoc["ImaginaryDirectData"] = toPackedComplexMat[-v];
+                    If[KeyExistsQ[assoc, "TPPIDCRow"] && AssociationQ[assoc["TPPIDCRow"]] && KeyExistsQ[assoc["TPPIDCRow"], "V"],
+                        newAssoc["TPPIDCRow"] = Join[assoc["TPPIDCRow"], <|"V" -> toPackedRealVec[-assoc["TPPIDCRow"]["V"]]|>]
+                    ];
+                    Spectrum2D[newAssoc],
+                rep === "Complex",
+                    newAssoc["Data"] = toPackedComplexMat[Conjugate[assoc["Data"]]];
+                    Spectrum2D[newAssoc],
+                True,
+                    Message[Spectrum2D::nocomp, "V", rep];
+                    $Failed
+            ],
+        True,
+            Message[Spectrum2D::badaxis, axis];
+            $Failed
+    ]
 ];
 
 CombineComplementarySpectra[specs:{Spectrum2D[_], Spectrum2D[_]}, opts:(_Rule|_RuleDelayed)...] :=
     CombineComplementarySpectra[specs[[1]], specs[[2]], opts];
 
-Spectrum2D /: CombineComplementarySpectra[s1:Spectrum2D[_], s2:Spectrum2D[_], opts:(_Rule|_RuleDelayed)...] := Module[
-    {s2Ref = ReflectSpectrum[s2]},
+Spectrum2D /: CombineComplementarySpectra[s1:Spectrum2D[a1_Association], s2:Spectrum2D[a2_Association], opts:(_Rule|_RuleDelayed)...] := Module[
+    {rep1 = Lookup[a1, "Representation", "Complex"], rep2 = Lookup[a2, "Representation", "Complex"],
+     s2Ref, a2Ref, sumEA, diffEA, uMat, vMat, newAssoc},
+    If[s1["Dimensions"] =!= s2["Dimensions"] ||
+       Max[Abs[N[a1["Frequency1"] - a2["Frequency1"]]]] > 10^-9 * (1. + Max[Abs[a1["Frequency1"]]]) ||
+       Max[Abs[N[a1["Frequency2"] - a2["Frequency2"]]]] > 10^-9 * (1. + Max[Abs[a1["Frequency2"]]]),
+        Message[SignalData2D::baddata, "Complementary Spectrum2D datasets must share dimensions and frequency axes."];
+        Return[$Failed]
+    ];
+    s2Ref = ReflectSpectrum[s2];
     If[s2Ref === $Failed, Return[$Failed]];
-    CombineData[{s1, s2Ref}, {0.5, 0.5}, opts]
+    If[rep1 === "Complex" && rep2 === "Complex",
+        a2Ref = First[s2Ref];
+        sumEA = 0.5 * (a1["Data"] + a2Ref["Data"]);
+        diffEA = 0.5 * (a1["Data"] - a2Ref["Data"]);
+        uMat = toPackedComplexMat[toPackedRealMat[Re[sumEA]] + I * toPackedRealMat[Im[diffEA]]];
+        vMat = toPackedComplexMat[toPackedRealMat[Im[sumEA]] - I * toPackedRealMat[Re[diffEA]]];
+        newAssoc = a1;
+        newAssoc["Data"] = uMat;
+        newAssoc["ImaginaryDirectData"] = vMat;
+        newAssoc["QuadratureMethod"] = "EchoAntiEcho";
+        newAssoc["Representation"] = "Hypercomplex";
+        newAssoc["QuadratureCapabilities"] = buildCapabilities["Hypercomplex", "EchoAntiEcho"];
+        Spectrum2D[newAssoc],
+        CombineData[{s1, s2Ref}, {0.5, 0.5}, opts]
+    ]
 ];
 
 CombineData[specs:{_Spectrum2D..}, opts:(_Rule|_RuleDelayed)...] :=
     CombineData[specs, ConstantArray[1. / Length[specs], Length[specs]], opts];
 
 CombineData[specs:{_Spectrum2D..}, weights_List, opts:(_Rule|_RuleDelayed)...] := Module[
-    {w = N[weights], firstA = First[specs]["Association"], newAssoc},
+    {w = N[weights], firstA = First[specs]["Association"], allV, sameRepQ, reps, qm0, newAssoc},
     If[Length[specs] =!= Length[weights],
         Message[CombineData::incompw]; Return[$Failed]
     ];
@@ -582,8 +1060,31 @@ CombineData[specs:{_Spectrum2D..}, weights_List, opts:(_Rule|_RuleDelayed)...] :
         Message[SignalData2D::baddata, "All Spectrum2D datasets must share dimensions and frequency axes."];
         Return[$Failed]
     ];
+    reps = (Lookup[First[#], "Representation", "Complex"] &) /@ specs;
+    allV = (getSpectrumV[First[#]] =!= None &) /@ specs;
+    sameRepQ = (Length[DeleteDuplicates[reps]] === 1);
     newAssoc = firstA;
     newAssoc["Data"] = toPackedComplexMat[Sum[w[[i]] * specs[[i]]["Data"], {i, Length[specs]}]];
+    If[AllTrue[allV, TrueQ],
+        newAssoc["ImaginaryDirectData"] = toPackedComplexMat[Sum[w[[i]] * getSpectrumV[First[specs[[i]]]], {i, Length[specs]}]];
+        newAssoc["Representation"] = If[sameRepQ, First[reps], "Hypercomplex"],
+        If[MemberQ[allV, True], Message[Spectrum2D::repmerge]];
+        newAssoc["ImaginaryDirectData"] = None;
+        newAssoc["Representation"] = If[sameRepQ && First[reps] === "Complex", "Complex", "ReducedComplex"]
+    ];
+    qm0 = Lookup[newAssoc, "QuadratureMethod", None];
+    If[AllTrue[specs, KeyExistsQ[First[#], "TPPIDCRow"] && AssociationQ[First[#]["TPPIDCRow"]] &] &&
+       AllTrue[allV, TrueQ] && KeyExistsQ[firstA, "TPPIDCRow"],
+        newAssoc["TPPIDCRow"] = AssociationMap[
+            Function[{kv}, With[{k = kv[[1]]}, k -> toPackedRealVec[Sum[w[[i]] * First[specs[[i]]]["TPPIDCRow"][k], {i, Length[specs]}]]]],
+            firstA["TPPIDCRow"]
+        ],
+        If[KeyExistsQ[newAssoc, "TPPIDCRow"], newAssoc = KeyDrop[newAssoc, "TPPIDCRow"]]
+    ];
+    newAssoc["QuadratureCapabilities"] = buildCapabilities[
+        newAssoc["Representation"], qm0,
+        Join[Lookup[newAssoc, "Processing", <||>], <|"HasTPPIDCRow" -> KeyExistsQ[newAssoc, "TPPIDCRow"]|>]
+    ];
     Spectrum2D[newAssoc]
 ];
 
@@ -592,12 +1093,8 @@ Spectrum2D /: Expand[Spectrum2D[assoc_Association], opts:(_Rule|_RuleDelayed)...
     embedQ = TrueQ[EmbedCoordinates /. {opts} /. {EmbedCoordinates -> True}];
     compOpt = Component /. {opts} /. {Component -> "Complex"};
     uOpt = AxisUnits /. {opts} /. {AxisUnits -> "Hz"};
-    zMat = Switch[compOpt,
-        "Real", Re[Spectrum2D[assoc]],
-        "Imaginary", Im[Spectrum2D[assoc]],
-        "Magnitude", Abs[Spectrum2D[assoc]],
-        _, assoc["Data"]
-    ];
+    zMat = selectSpectrumComponentMat[Spectrum2D[assoc], compOpt];
+    If[zMat === $Failed, Return[$Failed]];
     If[!embedQ, Return[zMat]];
     scale = If[uOpt === "rad/s", 2. * Pi, 1.];
     f1 = scale * assoc["Frequency1"];
@@ -607,21 +1104,91 @@ Spectrum2D /: Expand[Spectrum2D[assoc_Association], opts:(_Rule|_RuleDelayed)...
 ];
 
 PhaseSpectrum2D[Spectrum2D[assoc_Association], phaseSpec_] := Module[
-    {phPair = resolvePhasePair[phaseSpec], mat = assoc["Data"], newAssoc = assoc},
+    {phPair = resolvePhasePair[phaseSpec], u = assoc["Data"], v = getSpectrumV[assoc],
+     rep = Lookup[assoc, "Representation", "Complex"], qm = Lookup[assoc, "QuadratureMethod", None],
+     hasF2, hasF1, newAssoc = assoc, prevPh},
     If[phPair === $Failed, Return[$Failed]];
-    mat = apply1DLinearPhase[mat, phPair[[1, 1]], phPair[[1, 2]], 2];
-    mat = apply1DLinearPhase[mat, phPair[[2, 1]], phPair[[2, 2]], 1];
-    newAssoc["Data"] = toPackedComplexMat[mat];
+    hasF2 = (phPair[[1]] != {0., 0.});
+    hasF1 = (phPair[[2]] != {0., 0.});
+    Which[
+        rep === "Hypercomplex",
+            If[v === None, Message[Spectrum2D::nof2phase, rep]; Return[$Failed]];
+            If[hasF2, {u, v} = phaseUVF2[u, v, phPair[[1, 1]], phPair[[1, 2]]]];
+            If[hasF1,
+                u = apply1DLinearPhase[u, phPair[[2, 1]], phPair[[2, 2]], 1];
+                v = apply1DLinearPhase[v, phPair[[2, 1]], phPair[[2, 2]], 1]
+            ],
+        rep === "TPPIHypercomplex",
+            If[v === None, Message[Spectrum2D::nof2phase, rep]; Return[$Failed]];
+            If[hasF2,
+                {u, v} = phaseUVF2[u, v, phPair[[1, 1]], phPair[[1, 2]]];
+                If[KeyExistsQ[assoc, "TPPIDCRow"] && AssociationQ[assoc["TPPIDCRow"]] &&
+                   KeyExistsQ[assoc["TPPIDCRow"], "U"] && KeyExistsQ[assoc["TPPIDCRow"], "V"],
+                    With[{dcRes = phaseUVF2[{assoc["TPPIDCRow"]["U"]}, {assoc["TPPIDCRow"]["V"]}, phPair[[1, 1]], phPair[[1, 2]]]},
+                        newAssoc["TPPIDCRow"] = <|
+                            "U" -> toPackedRealVec[Re[dcRes[[1, 1]]]],
+                            "V" -> toPackedRealVec[Re[dcRes[[2, 1]]]]
+                        |>
+                    ]
+                ]
+            ];
+            If[hasF1,
+                Message[Spectrum2D::tppif1phase];
+                u = apply1DLinearPhase[u, phPair[[2, 1]], phPair[[2, 2]], 1];
+                v = apply1DLinearPhase[v, phPair[[2, 1]], phPair[[2, 2]], 1];
+                newAssoc = KeyDrop[newAssoc, "TPPIDCRow"];
+                newAssoc["Processing"] = Join[Lookup[newAssoc, "Processing", <||>], <|"TPPIF1Modified" -> True|>]
+            ],
+        rep === "ReducedComplex",
+            If[hasF2,
+                Message[Spectrum2D::nof2phase, rep];
+                Return[$Failed]
+            ];
+            If[hasF1,
+                If[qm === "TPPI", Message[Spectrum2D::tppif1phase]];
+                u = apply1DLinearPhase[u, phPair[[2, 1]], phPair[[2, 2]], 1]
+            ],
+        rep === "Complex",
+            If[hasF1 && hasF2, Message[Spectrum2D::pmphase]];
+            u = apply1DLinearPhase[u, phPair[[1, 1]], phPair[[1, 2]], 2];
+            u = apply1DLinearPhase[u, phPair[[2, 1]], phPair[[2, 2]], 1],
+        True,
+            Message[Spectrum2D::badarg, "Unknown Spectrum2D Representation: " <> ToString[rep]];
+            Return[$Failed]
+    ];
+    newAssoc["Data"] = toPackedComplexMat[u];
+    If[v =!= None, newAssoc["ImaginaryDirectData"] = toPackedComplexMat[v]];
+    prevPh = Lookup[Lookup[assoc, "Processing", <||>], "PhaseCorrection", {{0., 0.}, {0., 0.}}];
+    newAssoc["Processing"] = Join[
+        Lookup[newAssoc, "Processing", <||>],
+        <|"PhaseCorrection" -> prevPh + phPair|>
+    ];
+    newAssoc["QuadratureCapabilities"] = buildCapabilities[
+        rep, qm, Join[newAssoc["Processing"], <|"HasTPPIDCRow" -> KeyExistsQ[newAssoc, "TPPIDCRow"]|>]
+    ];
     Spectrum2D[newAssoc]
 ];
 
-selectSpectrumComponentMat[spec_Spectrum2D, comp_] := Switch[
-    comp,
-    "Real", spec["Real"],
-    "Imaginary", spec["Imaginary"],
-    "Magnitude", spec["Magnitude"],
-    "Complex", spec["Data"],
-    _, Message[Spectrum2D::badarg, "Unknown Component -> " <> ToString[comp]]; $Failed
+selectSpectrumComponentMat[spec:Spectrum2D[assoc_Association], comp_] := With[
+    {rep = Lookup[assoc, "Representation", "Complex"], v = getSpectrumV[assoc]},
+    Switch[
+        comp,
+        "Real" | "RR", toPackedRealMat[Re[assoc["Data"]]],
+        "Imaginary" | "IR", toPackedRealMat[Im[assoc["Data"]]],
+        "RI",
+            If[v === None,
+                Message[Spectrum2D::nocomp, "RI", rep]; $Failed,
+                toPackedRealMat[Re[v]]
+            ],
+        "II",
+            If[v === None,
+                Message[Spectrum2D::nocomp, "II", rep]; $Failed,
+                toPackedRealMat[Im[v]]
+            ],
+        "Magnitude" | "HypercomplexMagnitude", hypercomplexMagnitudeMat[assoc],
+        "Complex", assoc["Data"],
+        _, Message[Spectrum2D::badarg, "Unknown Component -> " <> ToString[comp]]; $Failed
+    ]
 ];
 
 ExtractSlice[spec:Spectrum2D[assoc_Association], axis_String, pos_?NumericQ, opts:(_Rule|_RuleDelayed)...] := Module[
@@ -701,6 +1268,7 @@ PlotSpectrum2D[spec:Spectrum2D[assoc_Association], opts:(_Rule|_RuleDelayed)...]
     negCol = NegativeColor /. {opts} /. Options[PlotSpectrum2D];
     showProj = TrueQ[ShowProjections /. {opts} /. Options[PlotSpectrum2D]];
     pRange = PlotRange /. {opts} /. Options[PlotSpectrum2D];
+    If[MatchQ[pRange, {{_, _}, {_, _}}], pRange = Append[pRange, All]];
     passOpts = FilterRules[{opts}, Options[ListContourPlot]];
 
     effComp = If[compOpt === Automatic,

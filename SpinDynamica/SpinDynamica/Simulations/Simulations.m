@@ -37,6 +37,7 @@ BeginPackage["Simulations`Simulations`",
 "Interactions`Relaxation`",
 "Simulations`Polarization`",
 "Signals`Signal`",
+"Signals`SignalExpansionKernels`",
 "Ensemble`EnsembleAverage`",
 "General`Matrices`",
 "General`Miscellaneous`",
@@ -98,7 +99,7 @@ ConstrainPositive::usage="ConstrainPositive is an option for MaximizeTransformat
 Signal1D::usage="Signal1D[timing, options] simulates a 1D magnetic resonance signal. The parameter timing specifies the digitization of the sampled signal. There are several possible syntaxes for timing: (1) If timing has the form {tmin,tmax,\[Delta]t}, then the signal is sampled between time points tmin and tmax, with increments (dwell time) \[Delta]t. If tmin is omitted, the value 0 is used. (2) The parameter timing may also have the syntax {tmin,tmax,{nsample}}, where nsample is the number of sampling points in the interval [tmin,tmax]. The number of sampling points nsample may be an even integer or may  be specified using strings \"1k\", \"2k\" etc. If tmin is omitted, the value 0 is used. (3) timing may have the syntax {tmin,{\[Omega]SW,nsample}}, where \[Omega]SW is the spectral bandwidth in rad\[NonBreakingSpace]\!\(\*SuperscriptBox[\(s\), \(-1\)]\). The number of sampling points nsample may be an even integer, or may be specified using strings \"1k\", \"2k\" etc. If tmin is omitted, the value 0 is used. In practice, the timing syntax {{\[Omega]SW,nsample}} is often the most convenient.
 Signal1D[timing, evgen, options] applies an evolution generator evgen throughout the signal evolution, where evgen is an operator or a superoperator, or a time-dependent function of an operator or a superoperator. If evgen is absent, the default None is used, in which case the option BackgroundGenerator may be used to specify the Hamiltonian or Liouvillian under which the signal evolves.  
 	Signal1D[timing, events, options] performs the specified list of events while the signal is detected (padding out the remaining acquisition time with None). The events argument may have the form Repeat[events,n] in which case a repetition of the events is performed at the beginning of the acquisition interval. The syntax Repeat[events] fills the entire signal acquisition interval with the appropriate number of repetitions. 
-The available options include InitialDensityOperator, Observable, Preparation, BackgroundGenerator, NormalizationFactor, SignalCalculationMethod, MatchSamplingToPeriod, ReportSignalCalculationMethod, LineBroadening, EnsembleAverage, CarouselAverage, DigitalFrequencyResolution, ZeroFill, and ForceEvenNumberOfPoints. The option BackgroundGenerator may be of the form {prepbackg,detbackg} (in case of default \"LeftToRight\" chronology), indicating different values of BackgroundGenerator during the Preparation sequence and the signal detection. ";
+The available options include InitialDensityOperator, Observable, Preparation, BackgroundGenerator, NormalizationFactor, SignalCalculationMethod, MatchSamplingToPeriod, ReportSignalCalculationMethod, LineBroadening, EnsembleAverage, CarouselAverage, DigitalFrequencyResolution, ZeroFill, ForceEvenNumberOfPoints, ExpansionMethod, ExpansionTolerance, and CompilationBackend. The option BackgroundGenerator may be of the form {prepbackg,detbackg} (in case of default \"LeftToRight\" chronology), indicating different values of BackgroundGenerator during the Preparation sequence and the signal detection. ";
 
 
 (* ::Input::Initialization:: *)
@@ -3566,7 +3567,10 @@ WarnAboutMissingPreparationBackground->True,
 EnsembleVariableDimension->Undefined,
 EnsembleSetUp->False,
 ParallelSetUp->False,
-MinimumRecommendedUserLevel->Automatic
+MinimumRecommendedUserLevel->Automatic,
+ExpansionMethod->"Legacy",
+ExpansionTolerance->1.*^-9,
+CompilationBackend->Automatic
 };
 
 
@@ -5072,40 +5076,142 @@ opts
 
 
 (* ::Input::Initialization:: *)
-Signal1D[True,timing_,acqevents_,opts___Rule]:=Module[{ensav,prep,backg,prepbackg,detbackg,\[Rho]ini,var,vals,weights,nens,maxbatchsize,valwbatches,nbatch,lb,opbasis,basis,ib,temp,sig},
+(* ::Input::Initialization:: *)
+$CollectPeaksOnly=False;
+
+commonLorentzianLambda[sigs_List]:=Module[{lams={},pks,nz,effL,refLam,minL,maxL},
+    Do[
+        If[!MatchQ[s,Signal[{_,_,_},{"Lorentzian",_?MatrixQ},___Rule]],Return[$Failed,Module]];
+        pks=s[[2,2]];
+        nz=Select[pks,(First[#]!=0 && First[#]!=0.)&];
+        If[nz=!={},
+            effL=N[Re[nz[[All,3]]]+Im[nz[[All,2]]]];
+            {minL,maxL}=MinMax[effL];
+            If[!NumericQ[refLam],refLam=minL];
+            If[Max[Abs[minL-refLam],Abs[maxL-refLam]]>1.*^-12*Max[1.,Abs[refLam]],Return[$Failed,Module]];
+            lams={refLam}
+        ],
+        {s,sigs}
+    ];
+    If[lams==={},0.,First[lams]]
+];
+
+streamOrCombineSignal1D[timing:{tmin_,tmax_,\[Delta]t_},samples_List,weights_List,opts___Rule]:=Module[
+    {meth,tol,back,dfr,nT,tVec,lam0,acc,fid,sigOpts},
+    meth=ExpansionMethod/.{opts}/.Options[Signal1D];
+    tol=ExpansionTolerance/.{opts}/.Options[Signal1D];
+    back=CompilationBackend/.{opts}/.Options[Signal1D];
+    dfr=DigitalFrequencyResolution/.{opts}/.Options[Signal1D];
+    If[TrueQ[$CollectPeaksOnly] || meth==="Legacy" || MatchQ[dfr,True|_?NumericQ],
+        Return[CombineData[samples,weights,Sequence@@FilterRules[{opts},Options[Signal]]]]
+    ];
+    If[meth==="Streaming" &&
+       AllTrue[samples,MatchQ[#,Signal[{_,_,_},{"Lorentzian",_?MatrixQ},___Rule]]&],
+        lam0=commonLorentzianLambda[samples];
+        If[NumericQ[lam0],
+            nT=Round[Abs[(tmax-tmin)/\[Delta]t]]+1;
+            tVec=Developer`ToPackedArray[N[tmin]+N[\[Delta]t]*Range[0,nT-1]];
+            acc=CreateStreamingSignalAccumulator[tVec,lam0,ExpansionTolerance->tol,CompilationBackend->back];
+            MapThread[AccumulateStreamingPeaks[acc,#1[[2,2]],#2]&,{samples,weights}];
+            fid=FinalizeStreamingSignal[acc];
+            sigOpts=FilterRules[{opts}, {EmbedCoordinates,ZeroFill,ExpansionMethod,ExpansionTolerance,CompilationBackend}];
+            Return[Signal[timing,fid,
+                Evaluate@SimplifyRules[LineBroadening->None,DigitalFrequencyResolution->False,Sequence@@sigOpts,Sequence@@Options[Signal]]]]
+        ]
+    ];
+    CombineData[samples,weights,Sequence@@FilterRules[{opts},Options[Signal]]]
+];
+
+Signal1D[True,timing_,acqevents_,opts___Rule]:=Module[{ensav,prep,backg,prepbackg,detbackg,\[Rho]ini,var,vals,weights,nens,maxbatchsize,valwbatches,nbatch,lb,opbasis,basis,ib,temp,sig,meth,tol,back,dfr,canStream,acc,lam0,collected,batchLam,fid,nT,tVec,tmin,tmax,\[Delta]t,sigOpts},
 (
 {opbasis,basis}={OperatorBasis,Basis}/.{opts}/.Options[Signal1D];
+meth=ExpansionMethod/.{opts}/.Options[Signal1D];
+tol=ExpansionTolerance/.{opts}/.Options[Signal1D];
+back=CompilationBackend/.{opts}/.Options[Signal1D];
+dfr=DigitalFrequencyResolution/.{opts}/.Options[Signal1D];
 nens=Length[Last[ensav]];
 maxbatchsize=Min[Max[maxbatchsize,1],nens];
 var=First[ensav];
 valwbatches=Partition[Last[ensav],maxbatchsize,maxbatchsize,{1,1},{}];
 nbatch=Length[valwbatches];
+canStream=(!TrueQ[$CollectPeaksOnly]) && MatchQ[timing,{_,_,_}] && !MatchQ[dfr,True|_?NumericQ] &&
+    (meth==="Streaming");
 If[nbatch==1,
 PrintTemporary["ensemble averaging using 1 batch .."],
 PrintTemporary["ensemble averaging using "<>ToString[nbatch]<>" batches.."]
 ];
-CombineData[
-Monitor[
-Table[
-(
-temp=PrintTemporary["computing batch "<>ToString[ib]<>" of "<>ToString[nbatch]<>".."];
-sig=Signal1D[True,timing,acqevents,
-Evaluate@SimplifyRules[
-EnsembleAverage->{var,valwbatches[[ib]]},
-OperatorBasis->opbasis,
-Basis->basis,
-opts
-]
-];
-NotebookDelete[temp];
-sig
-),
-{ib,1,nbatch}
-],
-ProgressIndicator[ib,{1,nbatch+1}]
-],
-Table[1,{nbatch}],
-Sequence@@FilterRules[{opts},Options[Signal]]
+If[canStream,
+    acc=None; lam0=None; collected={};
+    {tmin,tmax,\[Delta]t}=timing;
+    nT=Round[Abs[(tmax-tmin)/\[Delta]t]]+1;
+    tVec=Developer`ToPackedArray[N[tmin]+N[\[Delta]t]*Range[0,nT-1]];
+    Monitor[
+        Do[
+            temp=PrintTemporary["computing batch "<>ToString[ib]<>" of "<>ToString[nbatch]<>".."];
+            sig=Block[{$CollectPeaksOnly=True},
+                Signal1D[True,timing,acqevents,
+                    Evaluate@SimplifyRules[
+                        EnsembleAverage->{var,valwbatches[[ib]]},
+                        OperatorBasis->opbasis,
+                        Basis->basis,
+                        opts
+                    ]
+                ]
+            ];
+            NotebookDelete[temp];
+            If[acc===None && collected==={},
+                batchLam=commonLorentzianLambda[{sig}];
+                If[NumericQ[batchLam],
+                    lam0=batchLam;
+                    acc=CreateStreamingSignalAccumulator[tVec,lam0,ExpansionTolerance->tol,CompilationBackend->back];
+                    AccumulateStreamingPeaks[acc,sig[[2,2]],1.],
+                    AppendTo[collected,sig]
+                ],
+                If[acc=!=None,
+                    batchLam=commonLorentzianLambda[{sig}];
+                    If[NumericQ[batchLam] && Abs[batchLam-lam0]<=1.*^-12*Max[1.,Abs[lam0]],
+                        AccumulateStreamingPeaks[acc,sig[[2,2]],1.],
+                        (* Rare heterogeneous mid-stream fallback: convert streamed peaks? Keep simple: cannot un-stream, only possible if different lam per orientation; fallback *)
+                        collected={Signal[timing,FinalizeStreamingSignal[acc],LineBroadening->None,DigitalFrequencyResolution->False,EmbedCoordinates->False],
+                            Signal[timing,Expand[sig,EmbedCoordinates->False,LineBroadening->None],LineBroadening->None,DigitalFrequencyResolution->False,EmbedCoordinates->False]};
+                        acc=None
+                    ],
+                    AppendTo[collected,sig]
+                ]
+            ],
+            {ib,1,nbatch}
+        ],
+        ProgressIndicator[ib,{1,nbatch+1}]
+    ];
+    If[acc=!=None,
+        fid=FinalizeStreamingSignal[acc];
+        sigOpts=FilterRules[{opts},{EmbedCoordinates,ZeroFill,ExpansionMethod,ExpansionTolerance,CompilationBackend}];
+        Signal[timing,fid,Evaluate@SimplifyRules[LineBroadening->None,DigitalFrequencyResolution->False,Sequence@@sigOpts,Sequence@@Options[Signal]]],
+        CombineData[collected,Table[1,{Length[collected]}],Sequence@@FilterRules[{opts},Options[Signal]]]
+    ],
+    CombineData[
+    Monitor[
+    Table[
+    (
+    temp=PrintTemporary["computing batch "<>ToString[ib]<>" of "<>ToString[nbatch]<>".."];
+    sig=Signal1D[True,timing,acqevents,
+    Evaluate@SimplifyRules[
+    EnsembleAverage->{var,valwbatches[[ib]]},
+    OperatorBasis->opbasis,
+    Basis->basis,
+    opts
+    ]
+    ];
+    NotebookDelete[temp];
+    sig
+    ),
+    {ib,1,nbatch}
+    ],
+    ProgressIndicator[ib,{1,nbatch+1}]
+    ],
+    Table[1,{nbatch}],
+    Sequence@@FilterRules[{opts},Options[Signal]]
+    ]
 ]
 )/;(
 (
@@ -5131,11 +5237,10 @@ MatchQ[prep,None|UnitySuperoperator[]]||
 Signal1D[True,timing_,acqevents_,opts___Rule]:=Module[{ensav,prep,backg,prepbackg,detbackg,\[Rho]ini,maxbatchsize,nens,opbasis,basis},
 (
 {ensav,opbasis,basis}={EnsembleAverage,OperatorBasis,Basis}/.{opts}/.Options[Signal1D];
-CombineData[
+streamOrCombineSignal1D[timing,
     signalEnsembleSamples[timing,Hold[acqevents],Hold[opts],ensav,opbasis,basis,False],
-    EnsembleWeights[ensav],Sequence@@FilterRules[{opts},Options[Signal]],Parallel->False]
-)/;(
-!TrueQ[Parallel/.{opts}/.Options[Signal1D]]&&
+    EnsembleWeights[ensav],opts]
+)/;(!TrueQ[Parallel/.{opts}/.Options[Signal1D]]&&
 (
 {ensav,prep,backg,\[Rho]ini,maxbatchsize}={EnsembleAverage,Preparation,BackgroundGenerator,InitialDensityOperator,MaxBatchSize}/.{opts}/.Options[Signal1D];
 {detbackg,prepbackg}=ReleaseHold[backg];
@@ -5218,11 +5323,10 @@ signalEnsembleSamples[timing_,events_Hold,settings_Hold,ensemble_,opbasis_,basis
 Signal1D[True,timing_,acqevents_,opts___Rule]:=Module[{ensav,prep,backg,prepbackg,detbackg,\[Rho]ini,maxbatchsize,nens,opbasis,basis},
 (
 {ensav,opbasis,basis}={EnsembleAverage,OperatorBasis,Basis}/.{opts}/.Options[Signal1D];
-CombineData[
+streamOrCombineSignal1D[timing,
     signalEnsembleSamples[timing,Hold[acqevents],Hold[opts],ensav,opbasis,basis,True],
-    EnsembleWeights[ensav],Sequence@@FilterRules[{opts},Options[Signal]],Parallel->True]
-)/;(
-TrueQ[Parallel/.{opts}/.Options[Signal1D]]&&
+    EnsembleWeights[ensav],opts]
+)/;(TrueQ[Parallel/.{opts}/.Options[Signal1D]]&&
 TrueQ[ParallelSetUp/.{opts}/.Options[Signal1D]]&&
 (
 {ensav,prep,backg,\[Rho]ini,maxbatchsize}={EnsembleAverage,Preparation,BackgroundGenerator,InitialDensityOperator,MaxBatchSize}/.{opts}/.Options[Signal1D];

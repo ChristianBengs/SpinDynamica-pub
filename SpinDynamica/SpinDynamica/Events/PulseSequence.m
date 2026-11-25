@@ -668,12 +668,20 @@ CoherenceOrderFiltration[arg1,{{spin},orders},arg2,opts];
 
 (* ::Input::Initialization:: *)
 CoherenceOrderFiltration[spinsandorders:({{Except[_List]..},{Except[_List]..}}..),opts___Rule]:=
-Module[{spins},(
+Module[{spins,canonPairs,ord},(
 spins=Union@@(First/@{spinsandorders});
 If[
-And@@(ValidSpinQ[#,SpinSystem[]]&/@spins),
-CoherenceOrderFiltration[True,spinsandorders,opts],
-(Message[PulseSequence::invalspins,spins];$Failed)
+!(And@@(ValidSpinQ[#,SpinSystem[]]&/@spins)),
+(Message[PulseSequence::invalspins,spins];Return[$Failed])
+];
+canonPairs=Table[
+ord=QM`Liouville`Private`canonicalizeCoherenceOrders[f[[2]]];
+If[ord===$Failed,Return[$Failed,Module]];
+{f[[1]],ord},
+{f,{spinsandorders}}
+];
+If[canonPairs===$Failed,$Failed,
+CoherenceOrderFiltration[True,Sequence@@canonPairs,opts]
 ]
 )];
 

@@ -18,6 +18,7 @@ BeginPackage["Simulations`Signal2D`",
  "Events`PulseSequence`",
  "Ensemble`EnsembleAverage`",
  "Signals`Signal`",
+ "Signals`SignalExpansionKernels`",
  "Signals`Signal2D`",
  "Simulations`Simulations`",
  "Simulations`Signal2DKernels`"
@@ -33,34 +34,42 @@ ClearAll[
     QuadratureSpins,
     PhaseCycle,
     CoherencePathway,
-    MagnusSubsteps
+    MagnusSubsteps,
+    AutomaticQuadratureEncoding
 ];
 
 Signal2D::usage = "Signal2D[{timing1, timing2}, opts] simulates a 2D NMR time-domain signal (returned as a SignalData2D object).\n" <>
 "timing1 (indirect t1) and timing2 (direct t2) use Signal1D timing syntax: {tmax, dt}, {tmin, tmax, dt}, {tmin, tmax, {n}}, or {{omegaSW, n}} (where omegaSW is spectral width in rad s^-1).\n" <>
 "Lifecycle stages obey Chronology (\"LeftToRight\" by default): InitialDensityOperator -> Preparation -> Evolution1 -> Mixing -> Evolution2 (detected with Observable).\n" <>
 "Evolution1 may be None (free evolution under BackgroundGenerator), an Operator/Superoperator, {\"Echo\", refocusEvents}, {\"ConstantTime\", Tct, refocusEvents}, or a PeriodicFunction / TimeDependentGeneratorFunction.\n" <>
-"QuadratureMethod supports \"States\" (default), \"StatesTPPI\", \"EchoAntiEcho\", \"TPPI\", and \"PhaseModulated\".\n" <>
-"SignalCalculationMethod supports Automatic, \"DoubleDiagonalization\", \"SteppedPropagator\", \"COMPUTE2D\", and \"Direct\".";
+"QuadratureMethod supports \"States\" (default), \"StatesTPPI\", \"EchoAntiEcho\", \"TPPI\", \"OversampledStates\", and \"PhaseModulated\".\n" <>
+"SignalCalculationMethod supports Automatic, \"DoubleDiagonalization\", \"SteppedPropagator\", \"COMPUTE2D\", and \"Direct\".\n" <>
+"ExpansionMethod selects \"Legacy\" (default), \"Fast\"/Automatic, \"2DNUFFT\", \"2DSemiSeparable\", or \"2DDirect\" with target ExpansionTolerance (default 10^-9) and CompilationBackend (default Automatic).";
 Evolution1::usage = "Evolution1 is an option for Signal2D specifying evolution during the indirect t1 period: None (background only), a constant generator, {\"Echo\", refocusEvents}, {\"ConstantTime\", Tct, refocusEvents}, {\"Stepped\", dt1Events}, or a time-dependent/periodic generator.";
 Evolution2::usage = "Evolution2 is an option for Signal2D specifying evolution during direct detection t2: None (background only), a constant generator, {\"Stepped\", dt2Events}, or a time-dependent/periodic generator.";
-Mixing::usage = "Mixing is an option for Signal2D specifying the mixing event sequence between indirect t1 evolution and direct t2 detection (pulses, delays, CoherenceOrderFiltration, etc.).";
-QuadratureMethod::usage = "QuadratureMethod is an option for Signal2D selecting indirect-dimension quadrature encoding: \"States\" (default), \"StatesTPPI\", \"EchoAntiEcho\", \"TPPI\", or \"PhaseModulated\".";
+Mixing::usage = "Mixing is an option for Signal2D specifying the mixing event sequence between indirect t1 evolution and direct t2 detection, or a quadrature-channel Association (<|\"Cos\" -> ..., \"Sin\" -> ...|> or <|\"Echo\" -> ..., \"AntiEcho\" -> ...|>). When AutomaticQuadratureEncoding -> Automatic, channel-dependent Mixing disables automatic preparation-side quadrature encoding; set AutomaticQuadratureEncoding -> True to combine automatic preparation encoding with distinct mixing channels.";
+QuadratureMethod::usage = "QuadratureMethod is an option for Signal2D selecting indirect-dimension quadrature encoding: \"States\" (default), \"StatesTPPI\", \"EchoAntiEcho\", \"TPPI\", \"OversampledStates\", or \"PhaseModulated\".";
 QuadratureOrder::usage = "QuadratureOrder is an option for Signal2D specifying the indirect coherence order magnitude p used for quadrature phase shifts and Echo/AntiEcho selection (default 1).";
 QuadratureSpins::usage = "QuadratureSpins is an option for Signal2D specifying which spins receive the indirect quadrature phase shift or coherence selection (default All).";
 PhaseCycle::usage = "PhaseCycle is an option for Signal2D specifying a list of phase-cycle steps (<|\"Preparation\" -> ..., \"Mixing\" -> ..., \"ReceiverPhase\" -> ..., \"Weight\" -> ...|>).";
 CoherencePathway::usage = "CoherencePathway is an option for Signal2D specifying optional coherence-order filtration p1 (scalar/list after Preparation) or {p1, pMix} (after Preparation and Mixing).";
 MagnusSubsteps::usage = "MagnusSubsteps is an option for Signal2D specifying the number of 4th-order Gauss-Legendre Magnus (CF4) integration substeps per rotor sub-interval during periodic COMPUTE2D propagation (default Automatic).";
+AutomaticQuadratureEncoding::usage = "AutomaticQuadratureEncoding is an option for Signal2D (Automatic, True, or False) controlling whether automatic preparation phase shifts (-Pi/(2*q)) and Echo/AntiEcho coherence filters are applied. Automatic enables them when Preparation and Mixing are channel-independent and disables them when either stage is a channel-dependent Association (covering both mixing-encoded States and Rance-Kay PEP-HSQC). Specify AutomaticQuadratureEncoding -> True to retain automatic preparation encoding alongside channel-dependent Mixing.";
 
 Signal2D::badtimes = "Invalid 2D timing specification `1`.";
 Signal2D::invalobs = "Invalid Observable specification `1`.";
 Signal2D::invalbg = "BackgroundGenerator must be a generator or a 4-element list {bgPrep, bgEv1, bgMix, bgEv2}.";
 Signal2D::badquad = "Invalid QuadratureMethod specification `1`.";
+Signal2D::badchan = "Channel-dependent `1` Association keys `2` are incompatible with QuadratureMethod -> `3` (expected keys `4`).";
 Signal2D::invalchron = "Chronology must be \"LeftToRight\" or \"RightToLeft\".";
 Signal2D::badcalc = "Requested SignalCalculationMethod `1` cannot be used for this problem: `2`";
 Signal2D::nocarav = "CarouselAverage -> True (or > 1) requires periodic evolution with SignalCalculationMethod -> \"COMPUTE2D\".";
 Signal2D::fail = "Signal2D simulation failed: `1`.";
 Signal2D::reportscm = "Using SignalCalculationMethod -> `1` (`2` space).";
+Signal2D::quadconflict = "QuadratureMethod -> `1` with QuadratureOrder -> `2` and AutomaticQuadratureEncoding -> True conflicts with explicit CoherencePathway `3` (`4`).";
+Signal2D::zerochan = "Quadrature channel(s) `1` in QuadratureMethod -> `2` have zero or negligible signal norm relative to `3`. This can occur legitimately (e.g. an on-resonance indirect carrier w1 = 0, no indirect evolution, selective transfer, or ensemble cancellation) or due to Preparation/Mixing/CoherencePathway settings.";
+Signal2D::chanasym = "Quadrature channels in QuadratureMethod -> `1` show amplitude asymmetry (norm ratio `2` across `3`). This can arise legitimately from asymmetric relaxation/coherence transfer or from pulse phase/flip-angle imbalances.";
+Signal2D::hetquadspins = "Heteronuclear/selective multi-spin detection (Observable spins `1`) uses default QuadratureSpins -> All with QuadratureOrder -> 1 and split-echo/constant-time Evolution1; automatic quadrature shifts all spins (including observed spins) unless QuadratureSpins specifies the indirect spin(s).";
 
 Options[Signal2D] = {
     OperatorBasis :> ZeemanKetBraOperatorBasis[],
@@ -76,6 +85,8 @@ Options[Signal2D] = {
     QuadratureMethod -> "States",
     QuadratureOrder -> 1,
     QuadratureSpins -> All,
+    AutomaticQuadratureEncoding -> Automatic,
+    QuadratureDiagnostics -> Automatic,
     PhaseCycle -> None,
     CoherencePathway -> Automatic,
     LineBroadening -> None,
@@ -90,7 +101,10 @@ Options[Signal2D] = {
     EnsembleAverage -> False,
     Parallel -> False,
     Chronology :> $Chronology,
-    ReportSignalCalculationMethod -> False
+    ReportSignalCalculationMethod -> False,
+    ExpansionMethod -> "Legacy",
+    ExpansionTolerance -> 1.*^-9,
+    CompilationBackend -> Automatic
 };
 
 SetAttributes[Signal2D, HoldRest];
@@ -398,6 +412,7 @@ buildHilbertStageSteps[chronEvents_List, bg_, basis_, system_List, Optional[tSta
             filts = extractFiltersFromEvent[ev];
             If[filts === $Failed, Return[$Failed, Module]];
             maskSpec = BuildHilbertCoherenceMask[filts, system, basis];
+            If[maskSpec === $Failed, Return[$Failed, Module]];
             AppendTo[steps, {"Filter", maskSpec}],
             AppendTo[seg, ev]
         ],
@@ -467,21 +482,39 @@ resolveQuadratureSpins[qsSpec_, system_List] := Module[{labels = First /@ system
     ]
 ];
 
-resolveCoherencePathway[cpSpec_, qSpins_List, obsSpins_List] := Which[
-    cpSpec === Automatic || cpSpec === None || cpSpec === False,
-        {None, None},
-    IntegerQ[cpSpec] || MatchQ[cpSpec, {_Integer ..}] && Length[cpSpec] =!= 2,
-        (* Wait: ambiguous 2-element flat integer list {-1, -1} means {p1, pMix}; use {{-2, 2}} to pass multiple p1 orders! *)
-        {If[ListQ[cpSpec], cpSpec, {cpSpec}], None},
-    MatchQ[cpSpec, {_Integer, _Integer}],
-        {{cpSpec[[1]]}, {cpSpec[[2]]}},
-    MatchQ[cpSpec, {{_Integer ..}}],
-        {cpSpec[[1]], None},
-    MatchQ[cpSpec, {_Integer | {_Integer ..}, _Integer | {_Integer ..}}],
-        {If[ListQ[cpSpec[[1]]], cpSpec[[1]], {cpSpec[[1]]}],
-         If[ListQ[cpSpec[[2]]], cpSpec[[2]], {cpSpec[[2]]}]},
-    True,
-        $Failed
+canonicalizePositiveQuadOrder[val_] := Module[{k},
+    k = QM`Liouville`Private`canonicalizeCoherenceOrderScalar[val];
+    If[IntegerQ[k] && k >= 1, k, $Failed]
+];
+
+resolveCoherencePathway[cpSpec_, qSpins_List, obsSpins_List] := Module[{canon1, canon2},
+    Which[
+        cpSpec === Automatic || cpSpec === None || cpSpec === False,
+            {None, None},
+        NumericQ[cpSpec],
+            canon1 = QM`Liouville`Private`canonicalizeCoherenceOrders[{cpSpec}];
+            If[canon1 === $Failed, $Failed, {canon1, None}],
+        ListQ[cpSpec] && AllTrue[cpSpec, NumericQ] && Length[cpSpec] =!= 2,
+            (* Note: ambiguous 2-element flat list {-1, -1} means {p1, pMix}; use {{-2, 2}} to pass multiple p1 orders! *)
+            canon1 = QM`Liouville`Private`canonicalizeCoherenceOrders[cpSpec];
+            If[canon1 === $Failed, $Failed, {canon1, None}],
+        ListQ[cpSpec] && Length[cpSpec] === 2 && NumericQ[cpSpec[[1]]] && NumericQ[cpSpec[[2]]],
+            canon1 = QM`Liouville`Private`canonicalizeCoherenceOrders[{cpSpec[[1]]}];
+            canon2 = QM`Liouville`Private`canonicalizeCoherenceOrders[{cpSpec[[2]]}];
+            If[canon1 === $Failed || canon2 === $Failed, $Failed, {canon1, canon2}],
+        ListQ[cpSpec] && Length[cpSpec] === 1 && ListQ[cpSpec[[1]]] && AllTrue[cpSpec[[1]], NumericQ],
+            canon1 = QM`Liouville`Private`canonicalizeCoherenceOrders[cpSpec[[1]]];
+            If[canon1 === $Failed, $Failed, {canon1, None}],
+        ListQ[cpSpec] && Length[cpSpec] === 2 &&
+        (NumericQ[cpSpec[[1]]] || (ListQ[cpSpec[[1]]] && cpSpec[[1]] =!= {} && AllTrue[cpSpec[[1]], NumericQ])) &&
+        (NumericQ[cpSpec[[2]]] || (ListQ[cpSpec[[2]]] && cpSpec[[2]] =!= {} && AllTrue[cpSpec[[2]], NumericQ])),
+            canon1 = QM`Liouville`Private`canonicalizeCoherenceOrders[If[ListQ[cpSpec[[1]]], cpSpec[[1]], {cpSpec[[1]]}]];
+            canon2 = QM`Liouville`Private`canonicalizeCoherenceOrders[If[ListQ[cpSpec[[2]]], cpSpec[[2]], {cpSpec[[2]]}]];
+            If[canon1 === $Failed || canon2 === $Failed, $Failed, {canon1, canon2}],
+        True,
+            Message[CoherenceOrder::invalorder, cpSpec];
+            $Failed
+    ]
 ];
 
 staticGenQ[ev_] := (nullGenQ[ev] || OperatorQ[ev] || SuperoperatorQ[ev]) && !periodicGenQ[ev];
@@ -556,12 +589,16 @@ applySpinZRotation[state_, space_String, qSpins_List, phi_?NumericQ, basis_, opb
     ]
 ];
 
-applySpinFilter[state_, space_String, spins_List, orders_List, system_List, basis_, opbasis_] := Module[{m, mask},
+applySpinFilter[state_, space_String, spins_List, orders_List, system_List, basis_, opbasis_] := Module[{m, mask, sop},
     If[space === "Hilbert",
         mask = BuildHilbertCoherenceMask[{{spins, orders}}, system, basis];
+        If[mask === $Failed, Return[$Failed]];
         ApplyHilbertMixSequence[state, {{"Filter", mask}}],
-        m = toPackedComplexMat[SuperoperatorMatrixRepresentation[CoherenceOrderFiltrationSuperoperator[spins, orders], opbasis, basis]];
-        toPackedComplexVec[m . state]
+        sop = CoherenceOrderFiltrationSuperoperator[spins, orders];
+        If[sop === $Failed, Return[$Failed]];
+        m = SuperoperatorMatrixRepresentation[sop, opbasis, basis];
+        If[m === $Failed || !MatrixQ[m, NumericQ], Return[$Failed]];
+        toPackedComplexVec[toPackedComplexMat[m] . state]
     ]
 ];
 
@@ -665,12 +702,14 @@ evaluateDirect2D[spec_Association] := Module[
         Module[{key = comp["Key"],
                 rhoByG = Lookup[comp, "RhoByGamma", {comp[If[space === "Hilbert", "RhoStates", "RhoVecs"]]}],
                 rhoList, nStates, sMat, mixChrons, rSt, rMid, t1End, rMix, tMixEnd, t2Start,
+                compTauP = N[Re[Lookup[comp, "PrepDuration", tauP]]],
+                compTauM = N[Re[Lookup[comp, "MixDuration", tauM]]],
                 g2, traj, vals2, mod = Lookup[comp, "RowModulators", None], tGStart, t1Start},
             mixChrons = comp["DirectMixEvents"];
             sMat = ConstantArray[0. + 0. I, {n1, n2}];
             Do[
                 tGStart = t0 + gammaShifts[[gIdx]];
-                t1Start = tGStart + tauP;
+                t1Start = tGStart + compTauP;
                 rhoList = If[Length[rhoByG] === 1, rhoByG[[1]], rhoByG[[gIdx]]];
                 nStates = Length[rhoList];
                 Do[
@@ -682,7 +721,7 @@ evaluateDirect2D[spec_Association] := Module[
                                 BackgroundGenerator -> bgMix, InitialTimePoint -> t1End, UseHilbertSpaceWhenPossible -> mixUseHilb][rMid]
                         ]
                     ];
-                    tMixEnd = t1End + tauM;
+                    tMixEnd = t1End + compTauM;
                     t2Start = tMixEnd + tmin2;
                     If[MemberQ[{"Static", "Periodic"}, ev2Spec["Kind"]],
                         g2 = ev2Spec["Gen2"];
@@ -961,7 +1000,7 @@ findRationalDenom2D[ratio_?NumericQ, maxD_Integer: 64] := Module[{d},
 resolve2DPeriod[periodOpt_, ev1Spec_Association, ev2Spec_Association, bgList_List] := Module[
     {p1, p2, pb2, pb4, comb},
     If[NumericQ[periodOpt] && periodOpt > 0, Return[N[Re[periodOpt]]]];
-    If[!MemberQ[{"Static", "Periodic"}, ev1Spec["Kind"]] || !MemberQ[{"Static", "Periodic"}, ev2Spec["Kind"]],
+    If[!MemberQ[{"Static", "StaticSplit", "Periodic"}, ev1Spec["Kind"]] || !MemberQ[{"Static", "StaticSplit", "Periodic"}, ev2Spec["Kind"]],
         Return[None]
     ];
     p1 = If[ev1Spec["Kind"] === "Periodic", ev1Spec["Period"], All];
@@ -985,10 +1024,162 @@ buildPackedSpinZMat[qSpins_List, phi_?NumericQ, space_String, basis_, opbasis_, 
     ]
 ];
 
-buildPackedFilterOp[spins_List, orders_List, space_String, system_List, basis_, opbasis_] := If[
-    space === "Hilbert",
-    <|"Kind" -> "Filter", "MaskSpec" -> BuildHilbertCoherenceMask[{{spins, orders}}, system, basis]|>,
-    <|"Kind" -> "Filter", "Mat" -> toPackedComplexMat[SuperoperatorMatrixRepresentation[CoherenceOrderFiltrationSuperoperator[spins, orders], opbasis, basis]]|>
+buildPackedFilterOp[spins_List, orders_List, space_String, system_List, basis_, opbasis_] := Module[{res},
+    If[space === "Hilbert",
+        res = BuildHilbertCoherenceMask[{{spins, orders}}, system, basis];
+        If[res === $Failed, $Failed, <|"Kind" -> "Filter", "MaskSpec" -> res|>],
+        res = SuperoperatorMatrixRepresentation[CoherenceOrderFiltrationSuperoperator[spins, orders], opbasis, basis];
+        If[res === $Failed || !MatrixQ[res, NumericQ], $Failed, <|"Kind" -> "Filter", "Mat" -> toPackedComplexMat[res]|>]
+    ]
+];
+
+expectedChannelKeys[qm_String] := Switch[qm,
+    "States" | "StatesTPPI" | "OversampledStates", {"Cos", "Sin"},
+    "EchoAntiEcho", {"Echo", "AntiEcho"},
+    "PhaseModulated" | "TPPI", {"Data"},
+    _, {}
+];
+
+validateChannelAssoc[spec_, stageName_String, qm_String, emitMsgQ_: True] := Module[{expKeys},
+    If[!AssociationQ[spec], Return[None]];
+    If[!MemberQ[{"States", "StatesTPPI", "OversampledStates", "EchoAntiEcho"}, qm],
+        If[emitMsgQ, Message[Signal2D::badchan, stageName, Keys[spec], qm, {}]];
+        Return[$Failed]
+    ];
+    expKeys = expectedChannelKeys[qm];
+    If[!AllTrue[expKeys, KeyExistsQ[spec, #] &],
+        If[emitMsgQ, Message[Signal2D::badchan, stageName, Keys[spec], qm, expKeys]];
+        Return[$Failed]
+    ];
+    expKeys
+];
+
+resolveEffectiveAutoQuad[autoQuadOpt_, hasChanQ_?BooleanQ] := Which[
+    TrueQ[autoQuadOpt], True,
+    autoQuadOpt === False, False,
+    autoQuadOpt === Automatic, !hasChanQ,
+    True, $Failed
+];
+
+stageSpecHilbertQ[spec_, chron_String] := If[
+    AssociationQ[spec],
+    AllTrue[Values[spec], hilbertStageQ[#, chron] &],
+    hilbertStageQ[spec, chron]
+];
+
+stageSpecPeriodicQ[spec_] := If[
+    AssociationQ[spec],
+    AnyTrue[Values[spec], periodicGenQ],
+    periodicGenQ[spec]
+];
+
+quadPhaseShiftSummary[qm_String, qOrder_, effAutoQuadQ_?BooleanQ] := Module[{prepS, rxS},
+    prepS = Switch[qm,
+        "PhaseModulated", <|"Data" -> {0.}|>,
+        "States" | "OversampledStates",
+            <|"Cos" -> {0.}, "Sin" -> {If[effAutoQuadQ, -Pi / (2. * qOrder), 0.]}|>,
+        "StatesTPPI",
+            <|"Cos" -> {0., -Pi / qOrder},
+              "Sin" -> If[effAutoQuadQ, {-Pi / (2. * qOrder), -3. * Pi / (2. * qOrder)}, {0., -Pi / qOrder}]|>,
+        "EchoAntiEcho",
+            <|"Echo" -> If[effAutoQuadQ, {"Filter[" <> ToString[-qOrder] <> "]"}, {}],
+              "AntiEcho" -> If[effAutoQuadQ, {"Filter[" <> ToString[qOrder] <> "]"}, {}]|>,
+        "TPPI",
+            <|"Data" -> N[Range[0, 3] * Pi / (2. * qOrder)]|>,
+        _, <||>
+    ];
+    rxS = Switch[qm,
+        "StatesTPPI", <|"Cos" -> {0., Pi}, "Sin" -> {0., Pi}|>,
+        "States" | "OversampledStates", <|"Cos" -> {0.}, "Sin" -> {0.}|>,
+        "EchoAntiEcho", <|"Echo" -> {0.}, "AntiEcho" -> {0.}|>,
+        "PhaseModulated" | "TPPI", <|"Data" -> {0.}|>,
+        _, <||>
+    ];
+    {prepS, rxS}
+];
+
+emitDiagnosticMessages2D[msgCalls_List] := Do[
+    Switch[mc[[1]],
+        "quadconflict", Message[Signal2D::quadconflict, Sequence @@ mc[[2]]],
+        "zerochan", Message[Signal2D::zerochan, Sequence @@ mc[[2]]],
+        "chanasym", Message[Signal2D::chanasym, Sequence @@ mc[[2]]],
+        "hetquadspins", Message[Signal2D::hetquadspins, Sequence @@ mc[[2]]]
+    ],
+    {mc, msgCalls}
+];
+
+classifySpinSystemHeteronuclearQ[system_List, obsSpins_List] := Module[
+    {obsPairs, unobsPairs, obsI, unobsI, allLabels, gammas},
+    If[Length[system] < 2 || obsSpins === {}, Return[Automatic]];
+    obsPairs = Select[system, MemberQ[obsSpins, First[#]] &];
+    unobsPairs = Select[system, !MemberQ[obsSpins, First[#]] &];
+    If[unobsPairs === {}, Return[False]];
+    obsI = DeleteDuplicates[Last /@ obsPairs];
+    unobsI = DeleteDuplicates[Last /@ unobsPairs];
+    If[Intersection[obsI, unobsI] === {}, Return[True]];
+    allLabels = First /@ system;
+    If[AllTrue[allLabels, StringQ],
+        gammas = Quiet[Interactions`Interactions`GyromagneticRatio[#]] & /@ allLabels;
+        If[AllTrue[gammas, NumericQ],
+            With[{gObs = DeleteDuplicates[Pick[gammas, MemberQ[obsSpins, #] & /@ allLabels]],
+                  gUnobs = DeleteDuplicates[Pick[gammas, !MemberQ[obsSpins, #] & /@ allLabels]]},
+                If[Intersection[gObs, gUnobs] === {}, Return[True], Return[False]]
+            ]
+        ]
+    ];
+    Automatic
+];
+
+evaluateQuadratureDiagnostics2D[diagOpt_, qm_String, qOrder_, rawQSpins_, qSpins_, obsSpins_, system_List, ev1Spec_Association, p1Filt_, effAutoQuadQ_?BooleanQ, outData_, emitMsgQ_: True] := Module[
+    {norms, prepShifts, rxShifts, hetClass, warnings = {}, msgCalls = {}, vals, maxN, minN, zKeys},
+    norms = If[AssociationQ[outData],
+        AssociationMap[Function[{k}, N[Sqrt[Total[Abs[Flatten[outData[k]]]^2]]]], Keys[outData]],
+        <|"Data" -> N[Sqrt[Total[Abs[Flatten[outData]]^2]]]|>
+    ];
+    {prepShifts, rxShifts} = quadPhaseShiftSummary[qm, qOrder, effAutoQuadQ];
+    hetClass = classifySpinSystemHeteronuclearQ[system, obsSpins];
+    If[diagOpt =!= False && diagOpt =!= None,
+        If[p1Filt =!= None && ListQ[p1Filt] && effAutoQuadQ,
+            If[qm === "EchoAntiEcho" && (!MemberQ[p1Filt, -qOrder] || !MemberQ[p1Filt, qOrder]),
+                AppendTo[warnings, "quadconflict"];
+                AppendTo[msgCalls, {"quadconflict", {qm, qOrder, p1Filt, "requires both -q and +q pathways"}}],
+                If[MemberQ[{"States", "StatesTPPI", "OversampledStates", "TPPI"}, qm] &&
+                   (AllTrue[p1Filt, # > 0 &] || AllTrue[p1Filt, # < 0 &]),
+                    AppendTo[warnings, "quadconflict"];
+                    AppendTo[msgCalls, {"quadconflict", {qm, qOrder, p1Filt, "single-sign pathway breaks States/TPPI cos/sin modulation"}}]
+                ]
+            ]
+        ];
+        If[effAutoQuadQ && qm =!= "PhaseModulated" && rawQSpins === All && Length[system] >= 2 &&
+           Length[obsSpins] < Length[system] && qOrder === 1 &&
+           MemberQ[{"Echo", "ConstantTime"}, ev1Spec["Mode"]] && hetClass =!= False,
+            AppendTo[warnings, "hetquadspins"];
+            AppendTo[msgCalls, {"hetquadspins", {obsSpins}}]
+        ];
+        If[AssociationQ[outData],
+            vals = Values[norms];
+            maxN = Max[vals];
+            minN = Min[vals];
+            zKeys = Select[Keys[norms], (maxN == 0. || norms[#] <= 1.*^-12 * maxN) &];
+            If[zKeys =!= {},
+                AppendTo[warnings, "zerochan"];
+                AppendTo[msgCalls, {"zerochan", {zKeys, qm, norms}}],
+                If[MatchQ[diagOpt, True | "Verbose"] && minN > 1.*^-12 * maxN && (maxN / minN) > 5.,
+                    AppendTo[warnings, "chanasym"];
+                    AppendTo[msgCalls, {"chanasym", {qm, N[maxN / minN], norms}}]
+                ]
+            ]
+        ]
+    ];
+    If[TrueQ[emitMsgQ] && msgCalls =!= {}, emitDiagnosticMessages2D[msgCalls]];
+    <|
+        "HeteronuclearDetected" -> hetClass,
+        "ChannelNorms" -> norms,
+        "PreparationPhaseShifts" -> prepShifts,
+        "ReceiverPhaseShifts" -> rxShifts,
+        "DiagnosticWarnings" -> warnings,
+        "MessageCalls" -> msgCalls
+    |>
 ];
 
 (* Compile ensemble problem into pure System`/Developer` chunk payload when possible *)
@@ -996,17 +1187,19 @@ tryCompileEnsemble2D[heldAll_HoldComplete, stdEns_, rules_List, weights_List, pa
     {posArgsHold, optArgsHold, origVars, nEns = Length[rules], flatSyms, varSubRules, thetaList,
      nonStagePat, optRulesRaw, timing1, timing2, ev1Opt, mixOpt, ev2Opt, prepOpt, rho0Opt, obsOpt, bgOpt,
      cpOpt, pcOpt, lbOpt, scmOpt, periodOpt, t0Val, caravOpt, magSubOpt, normVal, useHilbOpt, forceEvenQ, chron,
+     autoQuadOpt, diagOpt, rawQSpinsOpt, diagRes, hasChanQ, effAutoQuadQ, chanKeys, pSpecsList, mSpecsList, tauPrepList, tauMixList,
      system, basis, opbasis, dimH, dimL, dim, qm, qOrder, qSpins, obsRaw, obsOp, obsSpins, cpPair, p1Filt, pMixFilt,
      t1Parsed, t2Parsed, n1Log, t1TimingForKernel, t1TimeVec, n1Kernel, bgList, ev1Spec, ev2Spec, resolvedPeriod,
-     isPeriodicProblem, caravActiveQ, scmChosen, space, symPat, prepChron, mixChronsBase, tauPrep, tauMix,
-     qAdjMat, qVec, qNormSq, normDenom, qObj, tSym, xTest, mode, keys, rowMod, rotNegHalf, rotPi, rotTppi,
-     baseMixPart, templateComps, quadMeta, rho0VecOrMat, baseStates,
-     extractStageOps, prepStageOps = None, mixStageOps = None, buildSimpleMixStep,
-     prepFixed = True, mixFixed = True, decCache, decompStage, atomSpecs = <||>, fixedSpec = <||>,
+     isPeriodicProblem, caravActiveQ, scmChosen, space, symPat, prepChronsList, mixChronsList, tauPrep, tauMix,
+     qAdjMat, qVec, qNormSq, normDenom, qObj, tSym, xTest, mode, keys, rowMod,
+     mixPartList, templateComps, quadMeta, rho0VecOrMat, baseStates,
+     extractStageOps, prepStageOps = None, mixStageOps = None,
+     atomSpecs = <||>, fixedSpec = <||>,
      nDiv = 1, nSubPerDiv = 4, microSub = 2, nGamma = 1, gammaOffsets = {0}, gammaShifts = {0.},
-     uniqueMixPhases = {0.}, chunkSize, nK, chunks, payloads, resOutList, accFinal, firstAssoc, resSig,
+     chunkSize, nK, chunks, payloads, resOutList, accFinal, firstAssoc, resSig,
+     expMeth, expTol, compBackend, peakModeQ,
      checkFreeQ, buildCoeffChunk, decomp1, decompBg1, decomp2, decompBg2, decompBgPrep, decompBgMix,
-     decomp1a, decomp1b, t1Min, t2Min, dt1, dt2, q1, q2, nBase, evalStageStaticQ},
+     decomp1a, decomp1b, q1, q2},
 
     posArgsHold = Select[heldAll, !MatchQ[Unevaluated[#], _Rule | _RuleDelayed] &];
     If[Length[posArgsHold] < 1 || Length[posArgsHold] > 2, Return[$Failed]];
@@ -1061,7 +1254,8 @@ tryCompileEnsemble2D[heldAll_HoldComplete, stdEns_, rules_List, weights_List, pa
             forceEvenQ = TrueQ[ForceEvenNumberOfPoints /. optRulesRaw /. Options[Signal2D]];
             qm = QuadratureMethod /. optRulesRaw /. Options[Signal2D];
             If[qm === None, qm = "PhaseModulated"];
-            qOrder = Abs[N[Re[QuadratureOrder /. optRulesRaw /. Options[Signal2D]]]];
+            qOrder = canonicalizePositiveQuadOrder[QuadratureOrder /. optRulesRaw /. Options[Signal2D]];
+            If[qOrder === $Failed, Return[$Failed]];
             qSpins = QuadratureSpins /. optRulesRaw /. Options[Signal2D];
             basis = Basis /. optRulesRaw /. Options[Signal2D];
             opbasis = OperatorBasis /. optRulesRaw /. Options[Signal2D];
@@ -1082,14 +1276,28 @@ tryCompileEnsemble2D[heldAll_HoldComplete, stdEns_, rules_List, weights_List, pa
             magSubOpt = MagnusSubsteps /. optRulesRaw /. Options[Signal2D];
             normVal = NormalizationFactor /. optRulesRaw /. Options[Signal2D];
             useHilbOpt = TrueQ[UseHilbertSpaceWhenPossible /. optRulesRaw /. Options[Signal2D]];
+            expMeth = ExpansionMethod /. optRulesRaw /. Options[Signal2D];
+            expTol = ExpansionTolerance /. optRulesRaw /. Options[Signal2D];
+            compBackend = CompilationBackend /. optRulesRaw /. Options[Signal2D];
+            autoQuadOpt = AutomaticQuadratureEncoding /. optRulesRaw /. Options[Signal2D];
+            diagOpt = QuadratureDiagnostics /. optRulesRaw /. Options[Signal2D];
 
-            If[!AllTrue[{chron, qm, qOrder, qSpins, basis, opbasis, obsRaw, rho0Opt, prepOpt, mixOpt, cpOpt, pcOpt, lbOpt, scmOpt, periodOpt, t0Val, caravOpt, normVal}, checkFreeQ],
+            If[!AllTrue[{chron, qm, qOrder, qSpins, basis, opbasis, obsRaw, rho0Opt, prepOpt, mixOpt, cpOpt, pcOpt, lbOpt, scmOpt, periodOpt, t0Val, caravOpt, normVal, autoQuadOpt, diagOpt}, checkFreeQ],
                 Return[$Failed]
             ];
+            rawQSpinsOpt = qSpins;
             If[pcOpt =!= None && pcOpt =!= {}, Return[$Failed]];
-            If[AssociationQ[prepOpt], Return[$Failed]];
             If[!MemberQ[{"LeftToRight", "RightToLeft"}, chron], Return[$Failed]];
-            If[!MemberQ[{"States", "StatesTPPI", "EchoAntiEcho", "TPPI", "PhaseModulated"}, qm], Return[$Failed]];
+            If[!MemberQ[{"States", "StatesTPPI", "EchoAntiEcho", "TPPI", "OversampledStates", "PhaseModulated"}, qm], Return[$Failed]];
+            If[validateChannelAssoc[prepOpt, "Preparation", qm, False] === $Failed ||
+               validateChannelAssoc[mixOpt, "Mixing", qm, False] === $Failed,
+                Return[$Failed]
+            ];
+            hasChanQ = AssociationQ[prepOpt] || AssociationQ[mixOpt];
+            effAutoQuadQ = resolveEffectiveAutoQuad[autoQuadOpt, hasChanQ];
+            If[!BooleanQ[effAutoQuadQ], Return[$Failed]];
+            chanKeys = expectedChannelKeys[qm];
+            If[stageSpecPeriodicQ[prepOpt] || stageSpecPeriodicQ[mixOpt], Return[$Failed]];
 
             t1Parsed = parseTimingAxis[timing1, forceEvenQ];
             t2Parsed = parseTimingAxis[timing2, forceEvenQ];
@@ -1100,7 +1308,7 @@ tryCompileEnsemble2D[heldAll_HoldComplete, stdEns_, rules_List, weights_List, pa
             qSpins = resolveQuadratureSpins[qSpins, system];
             obsOp = resolveObservable[obsRaw, system];
             If[qSpins === $Failed || obsOp === $Failed, Return[$Failed]];
-            obsSpins = Which[obsRaw === All, First /@ system, ValidSpinQ[obsRaw, system], {obsRaw}, ListQ[obsRaw] && ValidSpinQ[obsRaw, system], obsRaw, True, First /@ system];
+            obsSpins = Which[obsRaw === All, First /@ system, ListQ[obsRaw] && ValidSpinQ[obsRaw, system], obsRaw, ValidSpinQ[obsRaw, system], {obsRaw}, True, First /@ system];
             cpPair = resolveCoherencePathway[cpOpt, qSpins, obsSpins];
             If[cpPair === $Failed, Return[$Failed]];
             {p1Filt, pMixFilt} = cpPair;
@@ -1134,7 +1342,7 @@ tryCompileEnsemble2D[heldAll_HoldComplete, stdEns_, rules_List, weights_List, pa
                         True, False
                     ] &&
                     hilbertGenQ[ev2Spec["Gen2"] /. testSub] &&
-                    hilbertStageQ[prepOpt, chron] && hilbertStageQ[mixOpt, chron],
+                    stageSpecHilbertQ[prepOpt, chron] && stageSpecHilbertQ[mixOpt, chron],
                     "Hilbert", "Liouville"
                 ]
             ];
@@ -1155,7 +1363,7 @@ tryCompileEnsemble2D[heldAll_HoldComplete, stdEns_, rules_List, weights_List, pa
             mode = If[scmChosen === "COMPUTE2D", "COMPUTE2D", "DoubleDiag"];
 
             n1Log = t1Parsed["N"];
-            If[qm === "TPPI",
+            If[qm === "TPPI" || qm === "OversampledStates",
                 With[{t1T = t1Parsed["Timing"]},
                     t1TimingForKernel = {t1T[[1]], t1T[[1]] + (2 * n1Log - 1) * (0.5 * t1T[[3]]), 0.5 * t1T[[3]]};
                     t1TimeVec = toPackedRealVec[t1TimingForKernel[[1]] + t1TimingForKernel[[3]] * Range[0, 2 * n1Log - 1]];
@@ -1180,12 +1388,19 @@ tryCompileEnsemble2D[heldAll_HoldComplete, stdEns_, rules_List, weights_List, pa
             ];
             If[normDenom == 0., Return[$Failed]];
 
-            prepChron = normalizeEventsChronological[prepOpt, chron];
-            mixChronsBase = normalizeEventsChronological[mixOpt, chron];
-            If[prepChron === $Failed || mixChronsBase === $Failed, Return[$Failed]];
-            If[pMixFilt =!= None, AppendTo[mixChronsBase, CoherenceOrderFiltrationSuperoperator[obsSpins, pMixFilt]]];
-            tauPrep = stageEventDuration[prepChron];
-            tauMix = stageEventDuration[mixChronsBase];
+            pSpecsList = If[AssociationQ[prepOpt], prepOpt /@ chanKeys, ConstantArray[prepOpt, Length[chanKeys]]];
+            mSpecsList = If[AssociationQ[mixOpt], mixOpt /@ chanKeys, ConstantArray[mixOpt, Length[chanKeys]]];
+            prepChronsList = normalizeEventsChronological[#, chron] & /@ pSpecsList;
+            mixChronsList = (With[{mc = normalizeEventsChronological[#, chron]},
+                If[mc === $Failed, $Failed,
+                    If[pMixFilt =!= None, Append[mc, CoherenceOrderFiltrationSuperoperator[obsSpins, pMixFilt]], mc]
+                ]
+            ] &) /@ mSpecsList;
+            If[MemberQ[prepChronsList, $Failed] || MemberQ[mixChronsList, $Failed], Return[$Failed]];
+            tauPrepList = stageEventDuration /@ prepChronsList;
+            tauMixList = stageEventDuration /@ mixChronsList;
+            tauPrep = Max[tauPrepList];
+            tauMix = Max[tauMixList];
 
             (* Bail out cleanly if static DoubleDiag has ensemble-dependent Prep/Mix finite propagation *)
             symPat = If[flatSyms === {}, Alternatives[], Alternatives @@ flatSyms];
@@ -1341,7 +1556,7 @@ tryCompileEnsemble2D[heldAll_HoldComplete, stdEns_, rules_List, weights_List, pa
                 fixedSpec["PrepDuration"] = tauPrep;
                 fixedSpec["MixDuration"] = tauMix;
                 fixedSpec["GammaOffsets"] = gammaOffsets;
-                fixedSpec["UniqueMixStartPhases"] = DeleteDuplicates[Round[Mod[Flatten[Table[gammaShifts[[g]] + tauPrep + t1TimeVec, {g, nGamma}]], resolvedPeriod], 1.*^-11]]
+                fixedSpec["UniqueMixStartPhases"] = DeleteDuplicates[Round[Mod[Flatten[Table[gammaShifts[[g]] + tauPrepList[[idx]] + t1TimeVec, {idx, Length[chanKeys]}, {g, nGamma}]], resolvedPeriod], 1.*^-11]]
             ];
 
             (* Extract packed Preparation & Mixing stage representations *)
@@ -1378,55 +1593,71 @@ tryCompileEnsemble2D[heldAll_HoldComplete, stdEns_, rules_List, weights_List, pa
                 ops
             ];
 
-            (* Build base Rho0 / RhoBase and Mixing MixPart *)
+            (* Build base Rho0 / RhoBase per channel (with stage memoization) *)
             rho0VecOrMat = If[space === "Hilbert",
                 toPackedComplexMat[MatrixRepresentation[rho0Opt, basis]],
                 toPackedComplexVec[OperatorVectorRepresentation[rho0Opt, opbasis, basis]]
             ];
 
             If[mode === "COMPUTE2D" && tauPrep > 0. && periodicGenQ[bgList[[1]] /. Thread[flatSyms -> xTest]],
-                prepStageOps = extractStageOps[prepChron, bgList[[1]]];
-                If[prepStageOps === $Failed, Return[$Failed]];
-                fixedSpec["PrepStageOps"] = {prepStageOps};
-                baseStates = {rho0VecOrMat},
-                With[{rInit = If[space === "Hilbert",
-                        With[{st = buildHilbertStageSteps[prepChron, bgList[[1]], basis, system, t0Val]},
-                            If[st === $Failed, Return[$Failed]]; ApplyHilbertMixSequence[rho0VecOrMat, st]],
-                        With[{uM = buildLiouvilleStageMatrix[prepChron, bgList[[1]], opbasis, basis, dimL, t0Val]},
-                            If[uM === $Failed, Return[$Failed]]; toPackedComplexVec[uM . rho0VecOrMat]]
-                    ]},
-                    baseStates = {If[p1Filt =!= None, applySpinFilter[rInit, space, qSpins, p1Filt, system, basis, opbasis], rInit]}
+                prepStageOps = extractStageOps[#, bgList[[1]]] & /@ prepChronsList;
+                If[MemberQ[prepStageOps, $Failed], Return[$Failed]];
+                fixedSpec["PrepStageOps"] = prepStageOps;
+                baseStates = ConstantArray[rho0VecOrMat, Length[chanKeys]],
+                Module[{pCache = <||>, rInit},
+                    baseStates = Table[
+                        If[KeyExistsQ[pCache, pCh],
+                            pCache[pCh],
+                            rInit = If[space === "Hilbert",
+                                With[{st = buildHilbertStageSteps[pCh, bgList[[1]], basis, system, t0Val]},
+                                    If[st === $Failed, Return[$Failed, Module]]; ApplyHilbertMixSequence[rho0VecOrMat, st]],
+                                With[{uM = buildLiouvilleStageMatrix[pCh, bgList[[1]], opbasis, basis, dimL, t0Val]},
+                                    If[uM === $Failed, Return[$Failed, Module]]; toPackedComplexVec[uM . rho0VecOrMat]]
+                            ];
+                            pCache[pCh] = If[p1Filt =!= None, applySpinFilter[rInit, space, qSpins, p1Filt, system, basis, opbasis], rInit]
+                        ],
+                        {pCh, prepChronsList}
+                    ];
+                    If[MemberQ[baseStates, $Failed], Return[$Failed]]
                 ]
             ];
 
             If[mode === "COMPUTE2D" && tauMix > 0. && periodicGenQ[bgList[[3]] /. Thread[flatSyms -> xTest]],
-                mixStageOps = extractStageOps[mixChronsBase, bgList[[3]]];
-                If[mixStageOps === $Failed, Return[$Failed]];
-                fixedSpec["MixStageOps"] = {mixStageOps};
-                baseMixPart = <||>;
-                fixedSpec["MixCOMPUTE"] = {<||>},
-                (* Phase-independent static/instantaneous mixing step *)
-                If[space === "Hilbert",
-                    Module[{steps = buildHilbertStageSteps[mixChronsBase, bgList[[3]], basis, system, t0Val], isU, uS},
-                        If[steps === $Failed, Return[$Failed]];
-                        If[steps === {}, steps = {{"Unitary", toPackedComplexMat[IdentityMatrix[dimH]], toPackedComplexMat[IdentityMatrix[dimH]]}}];
-                        isU = (Length[steps] === 1 && steps[[1, 1]] === "Unitary");
-                        uS = If[isU, steps[[1, 2]], None];
-                        baseMixPart = <|"MixSteps" -> steps, "IsSingleUnitary" -> isU, "SingleUnitary" -> uS|>;
-                        fixedSpec["MixCOMPUTE"] = {
-                            <|"Static" -> If[isU,
-                                If[Max[Abs[uS - IdentityMatrix[dimH]]] <= 1.*^-13, <|"Kind" -> "Identity"|>, <|"Kind" -> "Unitary", "U" -> uS, "UH" -> toPackedComplexMat[ConjugateTranspose[uS]]|>],
-                                <|"Kind" -> "Steps", "Steps" -> steps|>
-                            ]|>
-                        }
-                    ],
-                    Module[{mM = buildLiouvilleStageMatrix[mixChronsBase, bgList[[3]], opbasis, basis, dimL, t0Val]},
-                        If[mM === $Failed, Return[$Failed]];
-                        baseMixPart = <|"MixMat" -> mM|>;
-                        fixedSpec["MixCOMPUTE"] = {
-                            <|"Static" -> If[Max[Abs[mM - IdentityMatrix[dimL]]] <= 1.*^-13, <|"Kind" -> "Identity"|>, <|"Kind" -> "Mat", "Mat" -> mM|>]|>
-                        }
-                    ]
+                mixStageOps = extractStageOps[#, bgList[[3]]] & /@ mixChronsList;
+                If[MemberQ[mixStageOps, $Failed], Return[$Failed]];
+                fixedSpec["MixStageOps"] = mixStageOps;
+                mixPartList = ConstantArray[<||>, Length[chanKeys]];
+                fixedSpec["MixCOMPUTE"] = ConstantArray[<||>, Length[chanKeys]],
+                Module[{mCache = <||>, mResList},
+                    mResList = Table[
+                        If[KeyExistsQ[mCache, mCh],
+                            mCache[mCh],
+                            mCache[mCh] = If[space === "Hilbert",
+                                Module[{steps = buildHilbertStageSteps[mCh, bgList[[3]], basis, system, t0Val], isU, uS, mp, mc},
+                                    If[steps === $Failed, Return[$Failed, Module]];
+                                    If[steps === {}, steps = {{"Unitary", toPackedComplexMat[IdentityMatrix[dimH]], toPackedComplexMat[IdentityMatrix[dimH]]}}];
+                                    isU = (Length[steps] === 1 && steps[[1, 1]] === "Unitary");
+                                    uS = If[isU, steps[[1, 2]], None];
+                                    mp = <|"MixSteps" -> steps, "IsSingleUnitary" -> isU, "SingleUnitary" -> uS|>;
+                                    mc = <|"Static" -> If[isU,
+                                        If[Max[Abs[uS - IdentityMatrix[dimH]]] <= 1.*^-13, <|"Kind" -> "Identity"|>, <|"Kind" -> "Unitary", "U" -> uS, "UH" -> toPackedComplexMat[ConjugateTranspose[uS]]|>],
+                                        <|"Kind" -> "Steps", "Steps" -> steps|>
+                                    ]|>;
+                                    {mp, mc}
+                                ],
+                                Module[{mM = buildLiouvilleStageMatrix[mCh, bgList[[3]], opbasis, basis, dimL, t0Val], mp, mc},
+                                    If[mM === $Failed, Return[$Failed, Module]];
+                                    mp = <|"MixMat" -> mM|>;
+                                    mc = <|"Static" -> If[Max[Abs[mM - IdentityMatrix[dimL]]] <= 1.*^-13, <|"Kind" -> "Identity"|>, <|"Kind" -> "Mat", "Mat" -> mM|>]|>;
+                                    {mp, mc}
+                                ]
+                            ]
+                        ],
+                        {mCh, mixChronsList}
+                    ];
+                    If[MemberQ[mResList, $Failed], Return[$Failed]];
+                    mixPartList = First /@ mResList;
+                    fixedSpec["MixCOMPUTE"] = Last /@ mResList
                 ]
             ];
 
@@ -1438,28 +1669,43 @@ tryCompileEnsemble2D[heldAll_HoldComplete, stdEns_, rules_List, weights_List, pa
             buildStateOpRotZ[phi_] := <|"Kind" -> "RotZ", "Mat" -> buildPackedSpinZMat[qSpins, phi, space, basis, opbasis, dim]|>;
             buildStateOpFilter[ord_] := buildPackedFilterOp[qSpins, {ord}, space, system, basis, opbasis];
             With[{idOp = <|"Kind" -> "Identity"|>},
+                keys = chanKeys;
                 templateComps = Switch[qm,
                     "PhaseModulated",
-                        keys = {"Data"};
-                        {<|"Key" -> "Data", "BaseIdx" -> 1, "Weight" -> 1., "RowModulators" -> None, "StateOps" -> {idOp}, "MixPart" -> baseMixPart|>},
-                    "States",
-                        keys = {"Cos", "Sin"};
-                        {<|"Key" -> "Cos", "BaseIdx" -> 1, "Weight" -> 1., "RowModulators" -> None, "StateOps" -> {idOp}, "MixPart" -> baseMixPart|>,
-                         <|"Key" -> "Sin", "BaseIdx" -> 1, "Weight" -> 1., "RowModulators" -> None, "StateOps" -> {buildStateOpRotZ[-Pi / (2. * qOrder)]}, "MixPart" -> baseMixPart|>},
-                    "StatesTPPI",
-                        keys = {"Cos", "Sin"};
-                        rowMod = toPackedRealVec[Table[(-1.)^(k - 1), {k, n1Kernel}]];
-                        {<|"Key" -> "Cos", "BaseIdx" -> 1, "Weight" -> 1., "RowModulators" -> rowMod, "StateOps" -> {idOp, buildStateOpRotZ[-Pi / qOrder]}, "MixPart" -> baseMixPart|>,
-                         <|"Key" -> "Sin", "BaseIdx" -> 1, "Weight" -> 1., "RowModulators" -> rowMod, "StateOps" -> {buildStateOpRotZ[-Pi / (2. * qOrder)], buildStateOpRotZ[-3. * Pi / (2. * qOrder)]}, "MixPart" -> baseMixPart|>},
-                    "EchoAntiEcho",
-                        keys = {"Echo", "AntiEcho"};
-                        {<|"Key" -> "Echo", "BaseIdx" -> 1, "Weight" -> 1., "RowModulators" -> None, "StateOps" -> {buildStateOpFilter[-qOrder]}, "MixPart" -> baseMixPart|>,
-                         <|"Key" -> "AntiEcho", "BaseIdx" -> 1, "Weight" -> 1., "RowModulators" -> None, "StateOps" -> {buildStateOpFilter[qOrder]}, "MixPart" -> baseMixPart|>},
-                    "TPPI",
-                        keys = {"Data"};
                         {<|"Key" -> "Data", "BaseIdx" -> 1, "Weight" -> 1., "RowModulators" -> None,
+                           "PrepDuration" -> tauPrepList[[1]], "MixDuration" -> tauMixList[[1]],
+                           "StateOps" -> {idOp}, "MixPart" -> mixPartList[[1]]|>},
+                    "States" | "OversampledStates",
+                        {<|"Key" -> "Cos", "BaseIdx" -> 1, "Weight" -> 1., "RowModulators" -> None,
+                           "PrepDuration" -> tauPrepList[[1]], "MixDuration" -> tauMixList[[1]],
+                           "StateOps" -> {idOp}, "MixPart" -> mixPartList[[1]]|>,
+                         <|"Key" -> "Sin", "BaseIdx" -> 2, "Weight" -> 1., "RowModulators" -> None,
+                           "PrepDuration" -> tauPrepList[[2]], "MixDuration" -> tauMixList[[2]],
+                           "StateOps" -> {If[effAutoQuadQ, buildStateOpRotZ[-Pi / (2. * qOrder)], idOp]}, "MixPart" -> mixPartList[[2]]|>},
+                    "StatesTPPI",
+                        rowMod = toPackedRealVec[Table[(-1.)^(k - 1), {k, n1Kernel}]];
+                        {<|"Key" -> "Cos", "BaseIdx" -> 1, "Weight" -> 1., "RowModulators" -> rowMod,
+                           "PrepDuration" -> tauPrepList[[1]], "MixDuration" -> tauMixList[[1]],
+                           "StateOps" -> {idOp, buildStateOpRotZ[-Pi / qOrder]}, "MixPart" -> mixPartList[[1]]|>,
+                         <|"Key" -> "Sin", "BaseIdx" -> 2, "Weight" -> 1., "RowModulators" -> rowMod,
+                           "PrepDuration" -> tauPrepList[[2]], "MixDuration" -> tauMixList[[2]],
+                           "StateOps" -> If[effAutoQuadQ,
+                               {buildStateOpRotZ[-Pi / (2. * qOrder)], buildStateOpRotZ[-3. * Pi / (2. * qOrder)]},
+                               {idOp, buildStateOpRotZ[-Pi / qOrder]}
+                           ],
+                           "MixPart" -> mixPartList[[2]]|>},
+                    "EchoAntiEcho",
+                        {<|"Key" -> "Echo", "BaseIdx" -> 1, "Weight" -> 1., "RowModulators" -> None,
+                           "PrepDuration" -> tauPrepList[[1]], "MixDuration" -> tauMixList[[1]],
+                           "StateOps" -> {If[effAutoQuadQ, buildStateOpFilter[-qOrder], idOp]}, "MixPart" -> mixPartList[[1]]|>,
+                         <|"Key" -> "AntiEcho", "BaseIdx" -> 2, "Weight" -> 1., "RowModulators" -> None,
+                           "PrepDuration" -> tauPrepList[[2]], "MixDuration" -> tauMixList[[2]],
+                           "StateOps" -> {If[effAutoQuadQ, buildStateOpFilter[qOrder], idOp]}, "MixPart" -> mixPartList[[2]]|>},
+                    "TPPI",
+                        {<|"Key" -> "Data", "BaseIdx" -> 1, "Weight" -> 1., "RowModulators" -> None,
+                           "PrepDuration" -> tauPrepList[[1]], "MixDuration" -> tauMixList[[1]],
                            "StateOps" -> Prepend[Table[buildStateOpRotZ[(m * Pi) / (2. * qOrder)], {m, 1, 3}], idOp],
-                           "MixPart" -> baseMixPart|>}
+                           "MixPart" -> mixPartList[[1]]|>}
                 ]
             ];
             If[fixedSpec["MixCOMPUTE"] === Missing["KeyAbsent", "MixCOMPUTE"], fixedSpec["MixCOMPUTE"] = ConstantArray[<||>, Length[templateComps]]];
@@ -1490,6 +1736,12 @@ tryCompileEnsemble2D[heldAll_HoldComplete, stdEns_, rules_List, weights_List, pa
                 "BaseStates" -> baseStates,
                 "TemplateComps" -> templateComps
             |>;
+            peakModeQ = (mode === "DoubleDiag" && space === "Hilbert" && fixedSpec["Ev1Mode"] === "Standard" &&
+                expMeth =!= "Legacy" &&
+                AllTrue[templateComps, TrueQ[#["MixPart", "IsSingleUnitary"]] && Length[#["StateOps"]] === 1 &] &&
+                (MatchQ[expMeth, "2DNUFFT" | "NUFFT" | "2DSemiSeparable"] ||
+                 (MatchQ[expMeth, "Fast" | Automatic] && nEns * n1Kernel * t2Parsed["N"] >= 1*^6 && n1Kernel >= 32 && t2Parsed["N"] >= 128)));
+            If[peakModeQ, fixedSpec["ExtractPeaksOnly"] = True];
 
             (* Determine chunking & parallel setup *)
             If[IntegerQ[parVal] && parVal > 1 && $KernelCount < parVal,
@@ -1566,11 +1818,36 @@ tryCompileEnsemble2D[heldAll_HoldComplete, stdEns_, rules_List, weights_List, pa
             ];
             If[MemberQ[resOutList, $Failed] || !AllTrue[resOutList, AssociationQ], Return[$Failed]];
 
-            accFinal = AssociationMap[Function[{k}, toPackedComplexMat[Total[(#["DataMap"][k] &) /@ resOutList]]], keys];
+            If[peakModeQ,
+                With[{nuMeth2D = If[MatchQ[expMeth, "Fast" | Automatic], "2DNUFFT", expMeth]},
+                    accFinal = AssociationMap[Function[{k},
+                        Module[{tmpl = First[Select[templateComps, #["Key"] === k &]],
+                                pA = (#["PeakBags"][k][[1]] &) /@ resOutList,
+                                pW1 = (#["PeakBags"][k][[2]] &) /@ resOutList,
+                                pW2 = (#["PeakBags"][k][[3]] &) /@ resOutList,
+                                allA, allW1, allW2, z0, p5, mat, mod = None},
+                            pA = Select[pA, # =!= {} &];
+                            If[pA === {},
+                                toPackedComplexMat[ConstantArray[0. + 0. I, {n1Kernel, t2Parsed["N"]}]],
+                                pW1 = Select[pW1, # =!= {} &]; pW2 = Select[pW2, # =!= {} &];
+                                allA = toPackedComplexVec[If[Length[pA] === 1, pA[[1]], Join @@ pA]];
+                                allW1 = toPackedRealVec[If[Length[pW1] === 1, pW1[[1]], Join @@ pW1]];
+                                allW2 = toPackedRealVec[If[Length[pW2] === 1, pW2[[1]], Join @@ pW2]];
+                                z0 = toPackedRealVec[ConstantArray[0., Length[allA]]];
+                                p5 = Transpose[{allA, allW1, z0, allW2, z0}];
+                                mat = ExpandLorentzian2DFast[p5, t1TimeVec, t2Parsed["TimeVec"],
+                                    ExpansionMethod -> nuMeth2D, ExpansionTolerance -> expTol, CompilationBackend -> compBackend];
+                                mod = tmpl["RowModulators"];
+                                If[mod === None, toPackedComplexMat[mat], toPackedComplexMat[toPackedComplexVec[mod] * mat]]
+                            ]
+                        ]], keys]
+                ],
+                accFinal = AssociationMap[Function[{k}, toPackedComplexMat[Total[(#["DataMap"][k] &) /@ resOutList]]], keys]
+            ];
             firstAssoc = <|
                 "Data" -> Which[
                     qm === "PhaseModulated" || qm === "TPPI", accFinal["Data"],
-                    qm === "States" || qm === "StatesTPPI", <|"Cos" -> accFinal["Cos"], "Sin" -> accFinal["Sin"]|>,
+                    qm === "States" || qm === "StatesTPPI" || qm === "OversampledStates", <|"Cos" -> accFinal["Cos"], "Sin" -> accFinal["Sin"]|>,
                     qm === "EchoAntiEcho", <|"Echo" -> accFinal["Echo"], "AntiEcho" -> accFinal["AntiEcho"]|>
                 ],
                 "Timing1" -> t1Parsed["Timing"],
@@ -1594,18 +1871,35 @@ tryCompileEnsemble2D[heldAll_HoldComplete, stdEns_, rules_List, weights_List, pa
                     "EnsembleCompiled" -> True,
                     "Period" -> If[mode === "COMPUTE2D", resolvedPeriod, None],
                     "CarouselAverage" -> caravOpt,
-                    "InitialTimePoint" -> t0Val
+                    "InitialTimePoint" -> t0Val,
+                    "OversamplingFactor1" -> If[qm === "OversampledStates", 2, 1],
+                    "AutomaticQuadratureEncoding" -> effAutoQuadQ,
+                    "ChannelDependentPreparation" -> AssociationQ[prepOpt],
+                    "ChannelDependentMixing" -> AssociationQ[mixOpt]
                 |>
             |>;
             If[qm === "TPPI",
                 firstAssoc["TPPITiming1"] = t1TimingForKernel;
                 firstAssoc["TPPITime1"] = t1TimeVec
             ];
+            If[qm === "OversampledStates",
+                firstAssoc["OversampledTiming1"] = t1TimingForKernel;
+                firstAssoc["OversampledTime1"] = t1TimeVec;
+                firstAssoc["OversamplingFactor1"] = 2
+            ];
             resSig = SignalData2D[firstAssoc];
             If[!MatchQ[lbOpt, None | False],
                 resSig = ApplyLineBroadening[resSig, LineBroadening -> lbOpt]
             ];
-            resSig
+            diagRes = evaluateQuadratureDiagnostics2D[
+                diagOpt, qm, qOrder, rawQSpinsOpt, qSpins, obsSpins, system, ev1Spec, p1Filt, effAutoQuadQ, resSig["Data"], False
+            ];
+            firstAssoc = resSig["Association"];
+            firstAssoc["Metadata"] = Join[
+                firstAssoc["Metadata"],
+                KeyTake[diagRes, {"HeteronuclearDetected", "ChannelNorms", "PreparationPhaseShifts", "ReceiverPhaseShifts", "DiagnosticWarnings"}]
+            ];
+            {SignalData2D[firstAssoc], diagRes["MessageCalls"]}
         ]
       ], blockSyms]]
     ]
@@ -1655,10 +1949,14 @@ runEnsembleSignal2D[heldAll_HoldComplete] := Module[
 
     (* Fast path: compiled operator-atom engine + in-place packed chunk accumulation *)
     compiledRes = Quiet[tryCompileEnsemble2D[heldExpanded, stdEns, rules, weights, parVal, maxBatch]];
+    If[ListQ[compiledRes] && Length[compiledRes] === 2 && MatchQ[First[compiledRes], _SignalData2D],
+        If[Last[compiledRes] =!= {}, emitDiagnosticMessages2D[Last[compiledRes]]];
+        Return[First[compiledRes]]
+    ];
     If[MatchQ[compiledRes, _SignalData2D], Return[compiledRes]];
 
     (* General symbolic batched fallback with in-place accumulation *)
-    optsCleanHold = DeleteCases[optArgsHold, (Rule | RuleDelayed)[EnsembleAverage | Parallel | MaxBatchSize | LineBroadening, _], {1}];
+    optsCleanHold = DeleteCases[optArgsHold, (Rule | RuleDelayed)[EnsembleAverage | Parallel | MaxBatchSize | LineBroadening | QuadratureDiagnostics, _], {1}];
     lbOpt = With[{hits = Cases[optArgsHold, (Rule | RuleDelayed)[LineBroadening, v_] :> HoldComplete[v], {1}]},
         If[hits === {}, None, ReleaseHold[First[hits]]]
     ];
@@ -1666,7 +1964,7 @@ runEnsembleSignal2D[heldAll_HoldComplete] := Module[
     worker = With[{pH = posArgsHold, oH = optsCleanHold},
         Function[sample,
             Module[{pSub = pH /. sample, oSub = oH /. sample, combined},
-                combined = Join[pSub, oSub, HoldComplete[EnsembleAverage -> False, Parallel -> False, LineBroadening -> None, ReportSignalCalculationMethod -> False]];
+                combined = Join[pSub, oSub, HoldComplete[EnsembleAverage -> False, Parallel -> False, LineBroadening -> None, QuadratureDiagnostics -> False, ReportSignalCalculationMethod -> False]];
                 Apply[Signal2D, combined]
             ]
         ]
@@ -1713,37 +2011,88 @@ runEnsembleSignal2D[heldAll_HoldComplete] := Module[
     resAssoc["Peaks2D"] = None;
     resAssoc["Metadata", "EnsembleMembers"] = nEns;
     resAssoc["Metadata", "EnsembleCompiled"] = False;
-    With[{outSig = SignalData2D[resAssoc]},
-        If[!MatchQ[lbOpt, None | False], ApplyLineBroadening[outSig, LineBroadening -> lbOpt], outSig]
+    With[{outSig = If[!MatchQ[lbOpt, None | False], ApplyLineBroadening[SignalData2D[resAssoc], LineBroadening -> lbOpt], SignalData2D[resAssoc]]},
+        Module[{diagOptFB, rawQSpinsFB, obsRawFB, ev1RawFB, cpRawFB, sysFB, obsSpinsFB, cpPairFB, p1FiltFB, ev1SpecFB, metaFB, diagResFB, finAssoc},
+            diagOptFB = With[{hits = Cases[optArgsHold, (Rule | RuleDelayed)[QuadratureDiagnostics, v_] :> HoldComplete[v], {1}]},
+                If[hits === {}, Automatic, ReleaseHold[First[hits]]]
+            ];
+            rawQSpinsFB = With[{hits = Cases[optArgsHold, (Rule | RuleDelayed)[QuadratureSpins, v_] :> HoldComplete[v], {1}]},
+                If[hits === {}, All, ReleaseHold[First[hits]]]
+            ];
+            obsRawFB = With[{hits = Cases[optArgsHold, (Rule | RuleDelayed)[Observable, v_] :> HoldComplete[v], {1}]},
+                If[hits === {}, All, ReleaseHold[First[hits]] /. First[rules]]
+            ];
+            ev1RawFB = With[{hits = Cases[optArgsHold, (Rule | RuleDelayed)[Evolution1, v_] :> HoldComplete[v], {1}]},
+                If[hits === {}, None, ReleaseHold[First[hits]] /. First[rules]]
+            ];
+            cpRawFB = With[{hits = Cases[optArgsHold, (Rule | RuleDelayed)[CoherencePathway, v_] :> HoldComplete[v], {1}]},
+                If[hits === {}, Automatic, ReleaseHold[First[hits]]]
+            ];
+            sysFB = SpinSystem[];
+            metaFB = Lookup[outSig["Association"], "Metadata", <||>];
+            obsSpinsFB = If[MatrixQ[sysFB],
+                Which[obsRawFB === All, First /@ sysFB, ListQ[obsRawFB] && ValidSpinQ[obsRawFB, sysFB], obsRawFB, ValidSpinQ[obsRawFB, sysFB], {obsRawFB}, True, First /@ sysFB],
+                {}
+            ];
+            cpPairFB = resolveCoherencePathway[cpRawFB, Lookup[metaFB, "QuadratureSpins", All], obsSpinsFB];
+            p1FiltFB = If[ListQ[cpPairFB], cpPairFB[[1]], None];
+            ev1SpecFB = <|"Mode" -> Which[
+                ListQ[ev1RawFB] && Length[ev1RawFB] >= 2 && ev1RawFB[[1]] === "Echo", "Echo",
+                ListQ[ev1RawFB] && Length[ev1RawFB] >= 3 && ev1RawFB[[1]] === "ConstantTime", "ConstantTime",
+                True, "Standard"
+            ]|>;
+            diagResFB = evaluateQuadratureDiagnostics2D[
+                diagOptFB,
+                outSig["QuadratureMethod"],
+                Lookup[metaFB, "QuadratureOrder", 1],
+                rawQSpinsFB,
+                Lookup[metaFB, "QuadratureSpins", All],
+                obsSpinsFB,
+                If[MatrixQ[sysFB], sysFB, {}],
+                ev1SpecFB,
+                p1FiltFB,
+                Lookup[metaFB, "AutomaticQuadratureEncoding", True],
+                outSig["Data"],
+                True
+            ];
+            finAssoc = outSig["Association"];
+            finAssoc["Metadata"] = Join[
+                Lookup[finAssoc, "Metadata", <||>],
+                KeyTake[diagResFB, {"HeteronuclearDetected", "ChannelNorms", "PreparationPhaseShifts", "ReceiverPhaseShifts", "DiagnosticWarnings"}]
+            ];
+            SignalData2D[finAssoc]
+        ]
     ]
 ];
 
 (* Public user call signatures *)
-Signal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] /;
+Signal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed|{(_Rule|_RuleDelayed)...})...] /;
+    !MatchQ[timing2, {(_Rule | _RuleDelayed)...}] &&
     !(Length[timing2] === 3 && (Head[timing1] === List && Length[timing1] === 2 && ListQ[timing1[[1]]] && ListQ[timing1[[2]]])) :=
     Signal2D[{timing1, timing2}, opts];
 
-Signal2D[{timing1_List, timing2_List}, {ev1_, mix_, ev2_}, opts:(_Rule|_RuleDelayed)...] :=
+Signal2D[{timing1_List, timing2_List}, {ev1_, mix_, ev2_}, opts:(_Rule|_RuleDelayed|{(_Rule|_RuleDelayed)...})...] :=
     Signal2D[{timing1, timing2}, Evolution1 -> ev1, Mixing -> mix, Evolution2 -> ev2, opts];
 
-Signal2D[{timing1_List, timing2_List}, opts:(_Rule|_RuleDelayed)...] :=
+Signal2D[{timing1_List, timing2_List}, opts:(_Rule|_RuleDelayed|{(_Rule|_RuleDelayed)...})...] :=
     runSingleSignal2D[timing1, timing2, opts];
 
-runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := Module[
-    {optRules, forceEvenQ, chron, t1Parsed, t2Parsed, qm, qOrder, qSpins, system, basis, opbasis,
+runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed|{(_Rule|_RuleDelayed)...})...] := Module[
+    {optRules, forceEvenQ, chron, t1Parsed, t2Parsed, qm, qOrder, rawQSpinsOpt, qSpins, system, basis, opbasis,
      rho0Opt, prepOpt, ev1Opt, mixOpt, ev2Opt, obsOpt, normOpt, bgOpt, cpOpt, pcOpt, lbOpt, scmOpt,
+     expMeth, expTol, compBackend, autoQuadOpt, diagOpt, hasChanPrepQ, hasChanMixQ, effAutoQuadQ, chanKeys,
      periodOpt, t0Val, caravOpt, magSubOpt,
      useHilbOpt, reportQ, bgList, obsOp, obsSpins, cpPair, p1Filt, pMixFilt,
      ev1Spec, ev2Spec, resolvedPeriod, isPeriodicProblem, caravActiveQ,
      t1TimeVec, t1TimingForKernel, n1Log, n1Kernel,
      pcSteps, space, useDiag2Q = False, scmChosen, dimH, dimL, dim, qAdjMat, qVec, qNormSq, normDenom,
-     buildRawMix, sameMixQ, prepChron, buildStateForPrep, prepStateFromSpec,
-     addPathwayFilterToMix, baseCompList, finalComps,
+     buildRawMix, sameMixQ, prepChron, buildStateForPrep, prepStateFromSpec, buildMixInfo,
+     prepCache, mixCache, stageMaxDuration, finalComps,
      h1Diag, h1aDiag, h1bDiag, h2Diag, l1Diag, l1aDiag, l1bDiag, l2Diag, actQ, actRho,
      refSteps, refSingleU, refMatL, diagFailQ,
      nDiv = 1, nSubPerDiv = 4, microSub = 2, nGamma = 1, gammaOffsets = {0}, gammaShifts = {0.},
      tauPrep = 0., tauMix = 0., tSym, prepPerQ, mixPerQ, prepChronsList, mixChronsList, uPhases,
-     kernelOut, dataMap, outData, sigAssoc, resSig},
+     kernelOut, dataMap, outData, sigAssoc, resSig, diagRes},
 
     optRules = Flatten[{opts}];
     chron = Chronology /. optRules /. Options[Signal2D];
@@ -1752,10 +2101,15 @@ runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := M
     ];
     forceEvenQ = TrueQ[ForceEvenNumberOfPoints /. optRules /. Options[Signal2D]];
     qm = QuadratureMethod /. optRules /. Options[Signal2D];
-    If[!MemberQ[{"States", "StatesTPPI", "EchoAntiEcho", "TPPI", "PhaseModulated", None}, qm],
+    If[!MemberQ[{"States", "StatesTPPI", "EchoAntiEcho", "TPPI", "OversampledStates", "PhaseModulated", None}, qm],
         Message[Signal2D::badquad, qm]; Return[$Failed]
     ];
     If[qm === None, qm = "PhaseModulated"];
+    autoQuadOpt = AutomaticQuadratureEncoding /. optRules /. Options[Signal2D];
+    If[!MemberQ[{Automatic, True, False}, autoQuadOpt],
+        Message[Signal2D::badquad, autoQuadOpt]; Return[$Failed]
+    ];
+    diagOpt = QuadratureDiagnostics /. optRules /. Options[Signal2D];
 
     t1Parsed = parseTimingAxis[timing1, forceEvenQ];
     t2Parsed = parseTimingAxis[timing2, forceEvenQ];
@@ -1770,9 +2124,10 @@ runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := M
     dimH = Length[BasisKets[basis]];
     dimL = Length[BasisOperators[opbasis]];
 
-    qOrder = Abs[N[Re[QuadratureOrder /. optRules /. Options[Signal2D]]]];
-    If[!NumericQ[qOrder] || qOrder <= 0., Message[Signal2D::badquad, qOrder]; Return[$Failed]];
-    qSpins = resolveQuadratureSpins[QuadratureSpins /. optRules /. Options[Signal2D], system];
+    qOrder = canonicalizePositiveQuadOrder[QuadratureOrder /. optRules /. Options[Signal2D]];
+    If[qOrder === $Failed, Message[Signal2D::badquad, QuadratureOrder /. optRules /. Options[Signal2D]]; Return[$Failed]];
+    rawQSpinsOpt = QuadratureSpins /. optRules /. Options[Signal2D];
+    qSpins = resolveQuadratureSpins[rawQSpinsOpt, system];
     If[qSpins === $Failed, Message[Signal2D::fail, "Invalid QuadratureSpins."]; Return[$Failed]];
 
     obsRaw = Observable /. optRules /. Options[Signal2D];
@@ -1780,8 +2135,8 @@ runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := M
     If[obsOp === $Failed, Message[Signal2D::invalobs, obsRaw]; Return[$Failed]];
     obsSpins = Which[
         obsRaw === All, First /@ system,
-        ValidSpinQ[obsRaw, system], {obsRaw},
         ListQ[obsRaw] && ValidSpinQ[obsRaw, system], obsRaw,
+        ValidSpinQ[obsRaw, system], {obsRaw},
         True, First /@ system
     ];
 
@@ -1812,6 +2167,9 @@ runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := M
     pcOpt = PhaseCycle /. optRules /. Options[Signal2D];
     lbOpt = LineBroadening /. optRules /. Options[Signal2D];
     scmOpt = SignalCalculationMethod /. optRules /. Options[Signal2D];
+    expMeth = ExpansionMethod /. optRules /. Options[Signal2D];
+    expTol = ExpansionTolerance /. optRules /. Options[Signal2D];
+    compBackend = CompilationBackend /. optRules /. Options[Signal2D];
     periodOpt = SignalGeneratorPeriod /. optRules /. Options[Signal2D];
     t0Val = InitialTimePoint /. optRules /. Options[Signal2D];
     If[!NumericQ[t0Val], Message[Signal2D::fail, "InitialTimePoint must be numeric."]; Return[$Failed]];
@@ -1854,6 +2212,16 @@ runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := M
         True, Message[Signal2D::fail, "PhaseCycle must be None or a list of Associations/rule lists."]; Return[$Failed]
     ];
 
+    If[validateChannelAssoc[prepOpt, "Preparation", qm, True] === $Failed ||
+       validateChannelAssoc[mixOpt, "Mixing", qm, True] === $Failed ||
+       (pcSteps =!= None && AnyTrue[pcSteps, (validateChannelAssoc[#["Preparation"], "Preparation", qm, True] === $Failed || validateChannelAssoc[#["Mixing"], "Mixing", qm, True] === $Failed) &]),
+        Return[$Failed]
+    ];
+    hasChanPrepQ = AssociationQ[prepOpt] || (pcSteps =!= None && AnyTrue[pcSteps, AssociationQ[#["Preparation"]] &]);
+    hasChanMixQ = AssociationQ[mixOpt] || (pcSteps =!= None && AnyTrue[pcSteps, AssociationQ[#["Mixing"]] &]);
+    effAutoQuadQ = resolveEffectiveAutoQuad[autoQuadOpt, hasChanPrepQ || hasChanMixQ];
+    chanKeys = expectedChannelKeys[qm];
+
     (* Check whether all generators and stages are Hilbert-compatible *)
     space = If[useHilbOpt &&
         OperatorQ[rho0Opt] &&
@@ -1870,11 +2238,8 @@ runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := M
             True, hilbertGenQ[ev2Spec["DirectFn"]] || MatchQ[ev2Spec["DirectFn"], _Function | _TimeDependentGeneratorFunction | _PeriodicFunction]
         ] &&
         If[pcSteps === None,
-            If[AssociationQ[prepOpt],
-                AllTrue[Values[prepOpt], hilbertStageQ[#, chron] &],
-                hilbertStageQ[prepOpt, chron]
-            ] && hilbertStageQ[mixOpt, chron],
-            AllTrue[pcSteps, hilbertStageQ[#["Preparation"], chron] && hilbertStageQ[#["Mixing"], chron] &]
+            stageSpecHilbertQ[prepOpt, chron] && stageSpecHilbertQ[mixOpt, chron],
+            AllTrue[pcSteps, stageSpecHilbertQ[#["Preparation"], chron] && stageSpecHilbertQ[#["Mixing"], chron] &]
         ],
         "Hilbert",
         "Liouville"
@@ -1919,9 +2284,9 @@ runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := M
             Message[Signal2D::badcalc, scmOpt, "unknown SignalCalculationMethod."]; Return[$Failed]
     ];
 
-    (* TPPI doubles t1 grid to {2*N1, dt1/2} while preserving logical Timing1 *)
+    (* TPPI and OversampledStates double t1 grid to {2*N1, dt1/2} while preserving logical Timing1 *)
     n1Log = t1Parsed["N"];
-    If[qm === "TPPI",
+    If[qm === "TPPI" || qm === "OversampledStates",
         With[{t1T = t1Parsed["Timing"]},
             t1TimingForKernel = {t1T[[1]], t1T[[1]] + (2 * n1Log - 1) * (0.5 * t1T[[3]]), 0.5 * t1T[[3]]};
             t1TimeVec = toPackedRealVec[t1TimingForKernel[[1]] + t1TimingForKernel[[3]] * Range[0, 2 * n1Log - 1]];
@@ -1949,14 +2314,17 @@ runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := M
     ];
 
     (* Compute stage durations for global time tracking *)
-    tauPrep = Which[
-        pcSteps =!= None, stageEventDuration[normalizeEventsChronological[pcSteps[[1, "Preparation"]], chron]],
-        AssociationQ[prepOpt], stageEventDuration[normalizeEventsChronological[prepOpt["Cos"], chron]],
-        True, stageEventDuration[normalizeEventsChronological[prepOpt, chron]]
+    stageMaxDuration[spec_] := If[AssociationQ[spec],
+        Max[stageEventDuration[normalizeEventsChronological[#, chron]] & /@ Values[spec]],
+        stageEventDuration[normalizeEventsChronological[spec, chron]]
+    ];
+    tauPrep = If[pcSteps =!= None,
+        Max[stageMaxDuration[#["Preparation"]] & /@ pcSteps],
+        stageMaxDuration[prepOpt]
     ];
     tauMix = If[pcSteps =!= None,
-        stageEventDuration[normalizeEventsChronological[pcSteps[[1, "Mixing"]], chron]],
-        stageEventDuration[normalizeEventsChronological[mixOpt, chron]]
+        Max[stageMaxDuration[#["Mixing"]] & /@ pcSteps],
+        stageMaxDuration[mixOpt]
     ];
 
     (* Precompute Observable norm & matrix/vector representation *)
@@ -1972,147 +2340,158 @@ runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := M
     ];
     If[normDenom == 0., Message[Signal2D::fail, "Observable has zero norm."]; Return[$Failed]];
 
-    (* Prepare base Preparation state and Mixing operator helpers at explicit start time tStart *)
-    prepStateFromSpec[pSpec_, Optional[tStart_?NumericQ, 0.]] := Module[{chEvs, rhoInitMat, steps, uMat},
+    (* Prepare memoized Preparation state and Mixing operator helpers at explicit start time tStart *)
+    prepCache = <||>;
+    prepStateFromSpec[pSpec_, Optional[tStart_?NumericQ, 0.]] := Module[
+        {cKey = {pSpec, Round[N[Re[tStart]], 1.*^-12]}, chEvs, rhoInitMat, steps, uMat, res},
+        If[KeyExistsQ[prepCache, cKey], Return[prepCache[cKey]]];
         chEvs = normalizeEventsChronological[pSpec, chron];
         If[chEvs === $Failed, Return[$Failed]];
-        If[space === "Hilbert",
+        res = If[space === "Hilbert",
             rhoInitMat = toPackedComplexMat[MatrixRepresentation[rho0Opt, basis]];
             steps = buildHilbertStageSteps[chEvs, bgList[[1]], basis, system, tStart];
-            If[steps === $Failed, Return[$Failed]];
-            ApplyHilbertMixSequence[rhoInitMat, steps],
+            If[steps === $Failed, $Failed, ApplyHilbertMixSequence[rhoInitMat, steps]],
             rhoInitMat = toPackedComplexVec[OperatorVectorRepresentation[rho0Opt, opbasis, basis]];
             uMat = buildLiouvilleStageMatrix[chEvs, bgList[[1]], opbasis, basis, dimL, tStart];
-            If[uMat === $Failed, Return[$Failed]];
-            toPackedComplexVec[uMat . rhoInitMat]
-        ]
+            If[uMat === $Failed, $Failed, toPackedComplexVec[uMat . rhoInitMat]]
+        ];
+        If[res =!= $Failed, prepCache[cKey] = res];
+        res
     ];
 
-    buildMixInfo[mSpec_, Optional[tStart_?NumericQ, 0.]] := Module[{chEvs, steps, isSingleU, uSingle, mMat},
+    mixCache = <||>;
+    buildMixInfo[mSpec_, Optional[tStart_?NumericQ, 0.]] := Module[
+        {cKey = {mSpec, Round[N[Re[tStart]], 1.*^-12]}, chEvs, steps, isSingleU, uSingle, mMat, res},
+        If[KeyExistsQ[mixCache, cKey], Return[mixCache[cKey]]];
         chEvs = normalizeEventsChronological[mSpec, chron];
         If[chEvs === $Failed, Return[$Failed]];
         If[pMixFilt =!= None,
             AppendTo[chEvs, CoherenceOrderFiltrationSuperoperator[obsSpins, pMixFilt]]
         ];
-        If[space === "Hilbert",
+        res = If[space === "Hilbert",
             steps = buildHilbertStageSteps[chEvs, bgList[[3]], basis, system, tStart];
-            If[steps === $Failed, Return[$Failed]];
-            If[steps === {},
-                steps = {{"Unitary", toPackedComplexMat[IdentityMatrix[dimH]], toPackedComplexMat[IdentityMatrix[dimH]]}}
-            ];
-            isSingleU = (Length[steps] === 1 && steps[[1, 1]] === "Unitary");
-            uSingle = If[isSingleU, steps[[1, 2]], None];
-            <|"MixSteps" -> steps, "IsSingleUnitary" -> isSingleU, "SingleUnitary" -> uSingle, "DirectMixEvents" -> chEvs|>,
+            If[steps === $Failed, $Failed,
+                With[{effSteps = If[steps === {}, {{"Unitary", toPackedComplexMat[IdentityMatrix[dimH]], toPackedComplexMat[IdentityMatrix[dimH]]}}, steps]},
+                    isSingleU = (Length[effSteps] === 1 && effSteps[[1, 1]] === "Unitary");
+                    uSingle = If[isSingleU, effSteps[[1, 2]], None];
+                    <|"MixSteps" -> effSteps, "IsSingleUnitary" -> isSingleU, "SingleUnitary" -> uSingle, "DirectMixEvents" -> chEvs|>
+                ]
+            ],
             mMat = buildLiouvilleStageMatrix[chEvs, bgList[[3]], opbasis, basis, dimL, tStart];
-            If[mMat === $Failed, Return[$Failed]];
-            <|"MixMat" -> mMat, "DirectMixEvents" -> chEvs|>
-        ]
-    ];
-
-    (* Build list of base items before applying QuadratureMethod *)
-    prepPerQ = (tauPrep > 0. && periodicGenQ[bgList[[1]]]) || periodicGenQ[prepOpt];
-    baseCompList = Module[{makeRhoByG},
-        makeRhoByG[pSpec_] := If[prepPerQ && nGamma > 1,
-            Table[
-                With[{st = prepStateFromSpec[pSpec, t0Val + gs]},
-                    If[st === $Failed, Return[$Failed, Module]];
-                    If[p1Filt =!= None, applySpinFilter[st, space, qSpins, p1Filt, system, basis, opbasis], st]
-                ],
-                {gs, gammaShifts}
-            ],
-            With[{st = prepStateFromSpec[pSpec, t0Val]},
-                If[st === $Failed, Return[$Failed, Module]];
-                {If[p1Filt =!= None, applySpinFilter[st, space, qSpins, p1Filt, system, basis, opbasis], st]}
-            ]
+            If[mMat === $Failed, $Failed, <|"MixMat" -> mMat, "DirectMixEvents" -> chEvs|>]
         ];
-        If[pcSteps === None,
-            If[AssociationQ[prepOpt] && qm === "States",
-                With[{rcG = makeRhoByG[prepOpt["Cos"]], rsG = makeRhoByG[prepOpt["Sin"]], mInf = buildMixInfo[mixOpt, t0Val]},
-                    If[rcG === $Failed || rsG === $Failed || mInf === $Failed, Return[$Failed]];
-                    {<|"ExplicitCosByG" -> rcG, "ExplicitSinByG" -> rsG, "MixInfo" -> mInf, "MixSpec" -> mixOpt, "Weight" -> 1.|>}
-                ],
-                With[{rG = makeRhoByG[prepOpt], mInf = buildMixInfo[mixOpt, t0Val]},
-                    If[rG === $Failed || mInf === $Failed, Return[$Failed]];
-                    {<|"RhoByGamma" -> rG, "MixInfo" -> mInf, "MixSpec" -> mixOpt, "Weight" -> 1.|>}
-                ]
-            ],
-            sameMixQ = (Length[Union[#["Mixing"] & /@ pcSteps]] === 1);
-            If[sameMixQ,
-                Module[{mInf = buildMixInfo[pcSteps[[1, "Mixing"]], t0Val], rGList, stG, nGStates},
-                    If[mInf === $Failed, Return[$Failed]];
-                    nGStates = If[prepPerQ && nGamma > 1, nGamma, 1];
-                    rGList = ConstantArray[0, nGStates];
-                    Do[
-                        stG = makeRhoByG[step["Preparation"]];
-                        If[stG === $Failed, Return[$Failed, Module]];
-                        If[Length[stG] === 1 && nGStates > 1, stG = ConstantArray[First[stG], nGStates]];
-                        Do[rGList[[g]] = rGList[[g]] + (step["Weight"] * Exp[-I * step["ReceiverPhase"]]) * stG[[g]], {g, nGStates}],
-                        {step, pcSteps}
-                    ];
-                    {<|"RhoByGamma" -> (If[space === "Hilbert", toPackedComplexMat[#], toPackedComplexVec[#]] &) /@ rGList,
-                       "MixInfo" -> mInf, "MixSpec" -> pcSteps[[1, "Mixing"]], "Weight" -> 1.|>}
-                ],
-                Table[
-                    With[{stG = makeRhoByG[step["Preparation"]], mInf = buildMixInfo[step["Mixing"], t0Val]},
-                        If[stG === $Failed || mInf === $Failed, Return[$Failed, Module]];
-                        <|"RhoByGamma" -> stG, "MixInfo" -> mInf, "MixSpec" -> step["Mixing"],
-                          "Weight" -> step["Weight"] * Exp[-I * step["ReceiverPhase"]]|>
-                    ],
-                    {step, pcSteps}
-                ]
-            ]
-        ]
+        If[res =!= $Failed, mixCache[cKey] = res];
+        res
     ];
-    If[baseCompList === $Failed, Message[Signal2D::fail, "Failed to construct Preparation or Mixing stage."]; Return[$Failed]];
 
-    (* Expand each base item across QuadratureMethod *)
-    finalComps = Flatten[Table[
-        Module[{mInf = item["MixInfo"], w = item["Weight"], mSpecItem = item["MixSpec"],
-                stateField = If[space === "Hilbert", "RhoStates", "RhoVecs"],
-                expandQStates, makeComp, rCosByG, rSinByG, rListByG, tpMod},
-            expandQStates[rBase_, modeTag_] := Switch[modeTag,
-                "PhaseModulated", {rBase},
-                "StatesCos", {rBase},
-                "StatesSin", {applySpinZRotation[rBase, space, qSpins, -Pi / (2. * qOrder), basis, opbasis]},
-                "StatesTPPICos", {rBase, applySpinZRotation[rBase, space, qSpins, -Pi / qOrder, basis, opbasis]},
-                "StatesTPPISin",
-                    With[{rs = applySpinZRotation[rBase, space, qSpins, -Pi / (2. * qOrder), basis, opbasis]},
-                        {rs, applySpinZRotation[rs, space, qSpins, -Pi / qOrder, basis, opbasis]}
+    (* Build finalComps uniformly across QuadratureMethod, channel Associations, and PhaseCycle *)
+    prepPerQ = (tauPrep > 0. && periodicGenQ[bgList[[1]]]) || stageSpecPeriodicQ[prepOpt] ||
+        (pcSteps =!= None && AnyTrue[pcSteps, stageSpecPeriodicQ[#["Preparation"]] &]);
+    finalComps = Catch[Module[
+        {stateField = If[space === "Hilbert", "RhoStates", "RhoVecs"],
+         rawSteps, makeRhoByG, expandQStates, makeComp, tpMod, outComps = {}},
+
+        makeRhoByG[pSpec_] := Module[{rawList},
+            rawList = If[prepPerQ && nGamma > 1,
+                Table[
+                    With[{st = prepStateFromSpec[pSpec, t0Val + gs]},
+                        If[st === $Failed, Throw[$Failed, "fcTag"]];
+                        If[p1Filt =!= None, applySpinFilter[st, space, qSpins, p1Filt, system, basis, opbasis], st]
                     ],
-                "Echo", {applySpinFilter[rBase, space, qSpins, {-qOrder}, system, basis, opbasis]},
-                "AntiEcho", {applySpinFilter[rBase, space, qSpins, {qOrder}, system, basis, opbasis]},
-                "TPPI", Table[applySpinZRotation[rBase, space, qSpins, (m * Pi) / (2. * qOrder), basis, opbasis], {m, 0, 3}]
+                    {gs, gammaShifts}
+                ],
+                With[{st = prepStateFromSpec[pSpec, t0Val]},
+                    If[st === $Failed, Throw[$Failed, "fcTag"]];
+                    {If[p1Filt =!= None, applySpinFilter[st, space, qSpins, p1Filt, system, basis, opbasis], st]}
+                ]
             ];
-            makeComp[key_, statesByG_List, mod_] := Join[
-                <|"Key" -> key, stateField -> First[statesByG], "RhoByGamma" -> statesByG,
-                  "RowModulators" -> mod, "Weight" -> w, "MixSpec" -> mSpecItem|>,
-                mInf
-            ];
-            If[KeyExistsQ[item, "ExplicitCosByG"],
-                {makeComp["Cos", ({#} &) /@ item["ExplicitCosByG"], None],
-                 makeComp["Sin", ({#} &) /@ item["ExplicitSinByG"], None]},
-                With[{rByG = item["RhoByGamma"]},
-                    Switch[qm,
-                        "PhaseModulated",
-                            {makeComp["Data", expandQStates[#, "PhaseModulated"] & /@ rByG, None]},
-                        "States",
-                            {makeComp["Cos", expandQStates[#, "StatesCos"] & /@ rByG, None],
-                             makeComp["Sin", expandQStates[#, "StatesSin"] & /@ rByG, None]},
-                        "StatesTPPI",
-                            tpMod = toPackedRealVec[Table[(-1.)^(k - 1), {k, n1Kernel}]];
-                            {makeComp["Cos", expandQStates[#, "StatesTPPICos"] & /@ rByG, tpMod],
-                             makeComp["Sin", expandQStates[#, "StatesTPPISin"] & /@ rByG, tpMod]},
-                        "EchoAntiEcho",
-                            {makeComp["Echo", expandQStates[#, "Echo"] & /@ rByG, None],
-                             makeComp["AntiEcho", expandQStates[#, "AntiEcho"] & /@ rByG, None]},
-                        "TPPI",
-                            {makeComp["Data", expandQStates[#, "TPPI"] & /@ rByG, None]}
+            If[!ListQ[rawList] || MemberQ[rawList, $Failed], $Failed, rawList]
+        ];
+
+        expandQStates[rBase_, modeTag_] := Switch[modeTag,
+            "Identity", {rBase},
+            "StatesSin", {applySpinZRotation[rBase, space, qSpins, -Pi / (2. * qOrder), basis, opbasis]},
+            "StatesTPPICos", {rBase, applySpinZRotation[rBase, space, qSpins, -Pi / qOrder, basis, opbasis]},
+            "StatesTPPISin",
+                With[{rs = applySpinZRotation[rBase, space, qSpins, -Pi / (2. * qOrder), basis, opbasis]},
+                    {rs, applySpinZRotation[rs, space, qSpins, -Pi / qOrder, basis, opbasis]}
+                ],
+            "Echo", {applySpinFilter[rBase, space, qSpins, {-qOrder}, system, basis, opbasis]},
+            "AntiEcho", {applySpinFilter[rBase, space, qSpins, {qOrder}, system, basis, opbasis]},
+            "TPPI", Table[applySpinZRotation[rBase, space, qSpins, (m * Pi) / (2. * qOrder), basis, opbasis], {m, 0, 3}]
+        ];
+
+        tpMod = If[qm === "StatesTPPI", toPackedRealVec[Table[(-1.)^(k - 1), {k, n1Kernel}]], None];
+        makeComp[key_, statesByG_List, mInf_Association, mSpec_, w_, pDur_, mDur_] := Join[
+            <|"Key" -> key, stateField -> First[statesByG], "RhoByGamma" -> statesByG,
+              "RowModulators" -> tpMod, "Weight" -> w, "MixSpec" -> mSpec,
+              "PrepDuration" -> pDur, "MixDuration" -> mDur|>,
+            mInf
+        ];
+
+        rawSteps = If[pcSteps === None,
+            {<|"Preparation" -> prepOpt, "Mixing" -> mixOpt, "Weight" -> 1., "ReceiverPhase" -> 0.|>},
+            pcSteps
+        ];
+
+        Do[
+            Module[{stepPairs, pDurs, mDurs, qTag, mInf, rGList, stG, nGStates, rByG},
+                qTag = Switch[{qm, chKey, effAutoQuadQ},
+                    {"States" | "OversampledStates", "Sin", True}, "StatesSin",
+                    {"StatesTPPI", "Cos", _}, "StatesTPPICos",
+                    {"StatesTPPI", "Sin", True}, "StatesTPPISin",
+                    {"StatesTPPI", "Sin", False}, "StatesTPPICos",
+                    {"EchoAntiEcho", "Echo", True}, "Echo",
+                    {"EchoAntiEcho", "AntiEcho", True}, "AntiEcho",
+                    {"TPPI", "Data", _}, "TPPI",
+                    _, "Identity"
+                ];
+                stepPairs = Table[
+                    {If[AssociationQ[st["Preparation"]], st["Preparation"][chKey], st["Preparation"]],
+                     If[AssociationQ[st["Mixing"]], st["Mixing"][chKey], st["Mixing"]],
+                     st["Weight"] * Exp[-I * st["ReceiverPhase"]]},
+                    {st, rawSteps}
+                ];
+                pDurs = stageEventDuration[normalizeEventsChronological[#, chron]] & /@ stepPairs[[All, 1]];
+                mDurs = stageEventDuration[normalizeEventsChronological[#, chron]] & /@ stepPairs[[All, 2]];
+                If[MemberQ[pDurs, $Failed] || MemberQ[mDurs, $Failed], Throw[$Failed, "fcTag"]];
+                sameMixQ = (Length[DeleteDuplicates[stepPairs[[All, 2]]]] === 1) && (Length[DeleteDuplicates[pDurs]] === 1);
+                If[sameMixQ,
+                    mInf = buildMixInfo[stepPairs[[1, 2]], t0Val];
+                    If[mInf === $Failed, Throw[$Failed, "fcTag"]];
+                    rByG = If[Length[stepPairs] === 1,
+                        makeRhoByG[stepPairs[[1, 1]]],
+                        nGStates = If[prepPerQ && nGamma > 1, nGamma, 1];
+                        rGList = ConstantArray[0, nGStates];
+                        Do[
+                            stG = makeRhoByG[sp[[1]]];
+                            If[stG === $Failed, Throw[$Failed, "fcTag"]];
+                            If[Length[stG] === 1 && nGStates > 1, stG = ConstantArray[First[stG], nGStates]];
+                            Do[rGList[[g]] = rGList[[g]] + sp[[3]] * stG[[g]], {g, nGStates}],
+                            {sp, stepPairs}
+                        ];
+                        If[!AllTrue[rGList, ArrayQ], $Failed,
+                            (If[space === "Hilbert", toPackedComplexMat[#], toPackedComplexVec[#]] &) /@ rGList
+                        ]
+                    ];
+                    If[rByG === $Failed, Throw[$Failed, "fcTag"]];
+                    AppendTo[outComps, makeComp[chKey, expandQStates[#, qTag] & /@ rByG, mInf, stepPairs[[1, 2]], 1., First[pDurs], First[mDurs]]],
+                    Do[
+                        With[{sp = stepPairs[[sIdx]]},
+                            rByG = makeRhoByG[sp[[1]]];
+                            mInf = buildMixInfo[sp[[2]], t0Val];
+                            If[rByG === $Failed || mInf === $Failed, Throw[$Failed, "fcTag"]];
+                            AppendTo[outComps, makeComp[chKey, expandQStates[#, qTag] & /@ rByG, mInf, sp[[2]], sp[[3]], pDurs[[sIdx]], mDurs[[sIdx]]]]
+                        ],
+                        {sIdx, Length[stepPairs]}
                     ]
                 ]
-            ]
-        ],
-        {item, baseCompList}
-    ], 1];
+            ],
+            {chKey, chanKeys}
+        ];
+        outComps
+    ], "fcTag"];
+    If[finalComps === $Failed, Message[Signal2D::fail, "Failed to construct Preparation or Mixing stage."]; Return[$Failed]];
 
     (* Execute chosen simulation kernel with seamless Liouville non-diagonalizable fallback *)
     diagFailQ = False;
@@ -2135,7 +2514,10 @@ runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := M
                         "QAdjMat" -> qAdjMat,
                         "NormDenom" -> normDenom,
                         "Components" -> finalComps,
-                        "ComputePeaks" -> (qm === "PhaseModulated" && Length[finalComps] === 1 && dimH <= 16)
+                        "ComputePeaks" -> (qm === "PhaseModulated" && Length[finalComps] === 1 && dimH <= 16),
+                        "ExpansionMethod" -> expMeth,
+                        "ExpansionTolerance" -> expTol,
+                        "CompilationBackend" -> compBackend
                     |>],
                     Module[{h1aMat, h1bMat},
                         h1aMat = generatorToHilbertMatrix[ev1Spec["Gen1a"], basis, dimH] + generatorToHilbertMatrix[bgList[[2]], basis, dimH];
@@ -2369,9 +2751,10 @@ runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := M
                 ]
             ];
 
-            mixPerQ = (tauMix > 0. && periodicGenQ[bgList[[3]]]) || periodicGenQ[mixOpt];
+            mixPerQ = (tauMix > 0. && periodicGenQ[bgList[[3]]]) || stageSpecPeriodicQ[mixOpt] ||
+                (pcSteps =!= None && AnyTrue[pcSteps, stageSpecPeriodicQ[#["Mixing"]] &]);
             uPhases = If[mixPerQ,
-                DeleteDuplicates[Round[Mod[Flatten[Table[gammaShifts[[g]] + tauPrep + t1TimeVec, {g, Length[gammaShifts]}]], resolvedPeriod], 1.*^-11]],
+                DeleteDuplicates[Round[Mod[Flatten[Table[gammaShifts[[g]] + comp["PrepDuration"] + t1TimeVec, {comp, finalComps}, {g, Length[gammaShifts]}]], resolvedPeriod], 1.*^-11]],
                 {0.}
             ];
 
@@ -2405,6 +2788,8 @@ runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := M
                     "Key" -> comp["Key"],
                     "Weight" -> comp["Weight"],
                     "RowModulators" -> comp["RowModulators"],
+                    "PrepDuration" -> comp["PrepDuration"],
+                    "MixDuration" -> comp["MixDuration"],
                     "RhoByGamma" -> comp["RhoByGamma"],
                     "MixByPhase" -> computeMixByPhase[comp]
                 |>,
@@ -2469,7 +2854,7 @@ runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := M
     outData = Which[
         qm === "PhaseModulated" || qm === "TPPI",
             dataMap["Data"],
-        qm === "States" || qm === "StatesTPPI",
+        qm === "States" || qm === "StatesTPPI" || qm === "OversampledStates",
             <|"Cos" -> dataMap["Cos"], "Sin" -> dataMap["Sin"]|>,
         qm === "EchoAntiEcho",
             <|"Echo" -> dataMap["Echo"], "AntiEcho" -> dataMap["AntiEcho"]|>
@@ -2496,19 +2881,36 @@ runSingleSignal2D[timing1_List, timing2_List, opts:(_Rule|_RuleDelayed)...] := M
             "NormalizationFactor" -> normVal,
             "InitialTimePoint" -> t0Val,
             "Period" -> If[NumericQ[resolvedPeriod], resolvedPeriod, None],
-            "CarouselAverage" -> caravOpt
+            "CarouselAverage" -> caravOpt,
+            "OversamplingFactor1" -> If[qm === "OversampledStates", 2, 1],
+            "AutomaticQuadratureEncoding" -> effAutoQuadQ,
+            "ChannelDependentPreparation" -> hasChanPrepQ,
+            "ChannelDependentMixing" -> hasChanMixQ
         |>
     |>;
     If[qm === "TPPI",
         sigAssoc["TPPITiming1"] = t1TimingForKernel;
         sigAssoc["TPPITime1"] = t1TimeVec
     ];
+    If[qm === "OversampledStates",
+        sigAssoc["OversampledTiming1"] = t1TimingForKernel;
+        sigAssoc["OversampledTime1"] = t1TimeVec;
+        sigAssoc["OversamplingFactor1"] = 2
+    ];
 
     resSig = SignalData2D[sigAssoc];
     If[!MatchQ[lbOpt, None | False],
         resSig = ApplyLineBroadening[resSig, LineBroadening -> lbOpt]
     ];
-    resSig
+    diagRes = evaluateQuadratureDiagnostics2D[
+        diagOpt, qm, qOrder, rawQSpinsOpt, qSpins, obsSpins, system, ev1Spec, p1Filt, effAutoQuadQ, resSig["Data"], True
+    ];
+    sigAssoc = resSig["Association"];
+    sigAssoc["Metadata"] = Join[
+        sigAssoc["Metadata"],
+        KeyTake[diagRes, {"HeteronuclearDetected", "ChannelNorms", "PreparationPhaseShifts", "ReceiverPhaseShifts", "DiagnosticWarnings"}]
+    ];
+    SignalData2D[sigAssoc]
 ];
 
 End[];

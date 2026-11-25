@@ -12,7 +12,8 @@ BeginPackage["Simulations`Signal2DKernels`",
  "QM`Hilbert`",
  "QM`SpinOperators`",
  "QM`Liouville`",
- "SD`Propagation`"
+ "SD`Propagation`",
+ "Signals`SignalExpansionKernels`"
 }];
 
 ClearAll[
@@ -240,17 +241,18 @@ DiagonalizeLiouvilleGeneral[lMat_?MatrixQ] := DiagonalizeLiouvilleBlocked[lMat, 
 
 BuildHilbertCoherenceMask[filters_List, system_List, basis_] := Module[
     {zb = ZeemanBasis[system], dim, mLists, ordLists, mask, tMat, tMatH},
+    ordLists = QM`Liouville`Private`canonicalizeCoherenceOrders /@ (Last /@ filters);
+    If[MemberQ[ordLists, $Failed], Return[$Failed]];
     dim = Length[BasisKets[zb]];
     mLists = Table[
         Re[Diagonal[Normal[MatrixRepresentation[opI[f[[1]], "z"], zb]]]],
         {f, filters}
     ];
-    ordLists = Last /@ filters;
     mask = toPackedRealMat[
         Table[
             Boole[And @@ Table[
-                With[{qVal = Round[2. * (mLists[[k, r]] - mLists[[k, c]])] / 2.},
-                    AnyTrue[N[Re[ordLists[[k]]]], Abs[# - qVal] < 1.*^-9 &]
+                With[{qVal = Round[mLists[[k, r]] - mLists[[k, c]]]},
+                    MemberQ[ordLists[[k]], qVal]
                 ],
                 {k, Length[filters]}
             ]],
@@ -290,6 +292,41 @@ applyRowModulators[mat_?MatrixQ, mod_] := If[
     toPackedComplexMat[toPackedComplexVec[mod] * mat]
 ];
 
+(* Fast vectorized Hilbert 2D transition-table extractor for Standard single-unitary components *)
+extractHilbertComponentPeaks[rMat_, wMat_, dAct_, actPairs_, e1_, w2Act_, weight_, dropTol_: 1.*^-14] := Module[
+    {d = Length[e1], uL, uR, maxR, nzPairs, rCut, bagA, bagW1, bagW2, a, b, rab, ampVec, maxAbs, keepIdx, partsA, partsW1, partsW2},
+    maxR = Max[Abs[rMat]];
+    If[maxR == 0., Return[{{}, {}, {}}]];
+    rCut = 1.*^-15 * maxR;
+    nzPairs = Position[Abs[rMat], x_ /; x > rCut, {2}, Heads -> False];
+    If[nzPairs === {}, Return[{{}, {}, {}}]];
+    uL = toPackedComplexMat[wMat[[actPairs[[All, 1]], All]]];
+    uR = toPackedComplexMat[Conjugate[wMat[[actPairs[[All, 2]], All]]]];
+    bagA = Internal`Bag[]; bagW1 = Internal`Bag[]; bagW2 = Internal`Bag[];
+    Do[
+        {a, b} = pair;
+        rab = rMat[[a, b]] * weight;
+        ampVec = toPackedComplexVec[rab * dAct * uL[[All, a]] * uR[[All, b]]];
+        maxAbs = Max[Abs[ampVec]];
+        If[maxAbs > 0.,
+            keepIdx = Pick[Range[Length[dAct]], UnitStep[Abs[ampVec] - dropTol * maxR], 1];
+            If[keepIdx =!= {},
+                Internal`StuffBag[bagA, toPackedComplexVec[ampVec[[keepIdx]]]];
+                Internal`StuffBag[bagW1, toPackedRealVec[ConstantArray[-(e1[[a]] - e1[[b]]), Length[keepIdx]]]];
+                Internal`StuffBag[bagW2, toPackedRealVec[w2Act[[keepIdx]]]]
+            ]
+        ],
+        {pair, nzPairs}
+    ];
+    partsA = Internal`BagPart[bagA, All];
+    If[partsA === {}, Return[{{}, {}, {}}]];
+    partsW1 = Internal`BagPart[bagW1, All];
+    partsW2 = Internal`BagPart[bagW2, All];
+    {toPackedComplexVec[If[Length[partsA] === 1, partsA[[1]], Join @@ partsA]],
+     toPackedRealVec[If[Length[partsW1] === 1, partsW1[[1]], Join @@ partsW1]],
+     toPackedRealVec[If[Length[partsW2] === 1, partsW2[[1]], Join @@ partsW2]]}
+];
+
 (* Core Hilbert Double-Diagonalization 2D Engine *)
 EvaluateHilbertDoubleDiag2D[spec_Association] := Module[
     {ev1Mode = Lookup[spec, "Ev1Mode", "Standard"],
@@ -298,7 +335,12 @@ EvaluateHilbertDoubleDiag2D[spec_Association] := Module[
      normDenom = N[Re[spec["NormDenom"]]],
      components = spec["Components"],
      computePeaksQ = TrueQ[Lookup[spec, "ComputePeaks", False]],
+     expMeth = Lookup[spec, "ExpansionMethod", "Legacy"],
+     expTol = Lookup[spec, "ExpansionTolerance", 1.*^-9],
+     compBackend = Lookup[spec, "CompilationBackend", Automatic],
+     extractOnlyQ = TrueQ[Lookup[spec, "ExtractPeaksOnly", False]],
      n1, n2, v2, vh2, e2, dMat, dMatT, actPairs, nAct, dAct, w2Act, de2Mat,
+     use2DNUFFTQ = False, peaksByKey = <||>, bagsByKey = <||>, modByKey = <||>,
      results = <||>, peaks2D = None},
 
     n1 = Length[t1Vec];
@@ -314,12 +356,75 @@ EvaluateHilbertDoubleDiag2D[spec_Association] := Module[
     nAct = Length[actPairs];
 
     If[nAct === 0,
+        If[extractOnlyQ,
+            Do[peaksByKey[comp["Key"]] = {{}, {}, {}}, {comp, components}];
+            Return[<|"PeaksByKey" -> peaksByKey|>]
+        ];
         Do[results[comp["Key"]] = toPackedComplexMat[ConstantArray[0. + 0. I, {n1, n2}]], {comp, components}];
         Return[<|"DataMap" -> results, "Peaks2D" -> {}|>]
     ];
 
     dAct = toPackedComplexVec[Extract[dMatT, actPairs] / normDenom];
     w2Act = toPackedRealVec[-(e2[[actPairs[[All, 1]]]] - e2[[actPairs[[All, 2]]]])];
+
+    use2DNUFFTQ = (!extractOnlyQ) && (ev1Mode === "Standard") && (expMeth =!= "Legacy") &&
+        AllTrue[components, TrueQ[Lookup[#, "IsSingleUnitary", False]] && Length[#["RhoStates"]] === 1 &] &&
+        (MatchQ[expMeth, "2DNUFFT" | "NUFFT" | "2DSemiSeparable"] ||
+         (MatchQ[expMeth, "Fast" | Automatic] && nAct * n1 * n2 >= 2*^6 && n1 >= 32 && n2 >= 128));
+
+    If[extractOnlyQ || use2DNUFFTQ,
+        Module[{h1Diag = spec["H1Diag"], v1, vh1, e1, nuMeth2D},
+            v1 = h1Diag["V"]; vh1 = h1Diag["VH"]; e1 = h1Diag["Evals"];
+            Do[bagsByKey[comp["Key"]] = {Internal`Bag[], Internal`Bag[], Internal`Bag[]}, {comp, components}];
+            Do[
+                Module[{rEig = vh1 . toPackedComplexMat[comp["RhoStates"][[1]]] . v1,
+                        uMix = Lookup[comp, "SingleUnitary", IdentityMatrix[Length[v1]]],
+                        wMat, key = comp["Key"], wt = N[Lookup[comp, "Weight", 1.]],
+                        extA, extW1, extW2},
+                    wMat = vh2 . toPackedComplexMat[uMix] . v1;
+                    modByKey[key] = Lookup[comp, "RowModulators", None];
+                    {extA, extW1, extW2} = extractHilbertComponentPeaks[rEig, wMat, dAct, actPairs, e1, w2Act, wt, 1.*^-14];
+                    If[extA =!= {},
+                        Internal`StuffBag[bagsByKey[key][[1]], extA];
+                        Internal`StuffBag[bagsByKey[key][[2]], extW1];
+                        Internal`StuffBag[bagsByKey[key][[3]], extW2]
+                    ]
+                ],
+                {comp, components}
+            ];
+            Do[
+                With[{pA = Internal`BagPart[bagsByKey[k][[1]], All],
+                      pW1 = Internal`BagPart[bagsByKey[k][[2]], All],
+                      pW2 = Internal`BagPart[bagsByKey[k][[3]], All]},
+                    peaksByKey[k] = If[pA === {},
+                        {{}, {}, {}},
+                        {toPackedComplexVec[If[Length[pA] === 1, pA[[1]], Join @@ pA]],
+                         toPackedRealVec[If[Length[pW1] === 1, pW1[[1]], Join @@ pW1]],
+                         toPackedRealVec[If[Length[pW2] === 1, pW2[[1]], Join @@ pW2]]}
+                    ]
+                ],
+                {k, Keys[bagsByKey]}
+            ];
+            If[extractOnlyQ, Return[<|"PeaksByKey" -> peaksByKey|>]];
+            nuMeth2D = If[MatchQ[expMeth, "Fast" | Automatic], "2DNUFFT", expMeth];
+            Do[
+                With[{pk = peaksByKey[k]},
+                    results[k] = If[pk[[1]] === {},
+                        toPackedComplexMat[ConstantArray[0. + 0. I, {n1, n2}]],
+                        Module[{z0 = toPackedRealVec[ConstantArray[0., Length[pk[[1]]]]], p5, mat},
+                            p5 = Transpose[{pk[[1]], pk[[2]], z0, pk[[3]], z0}];
+                            mat = ExpandLorentzian2DFast[p5, t1Vec, t2Vec,
+                                ExpansionMethod -> nuMeth2D, ExpansionTolerance -> expTol, CompilationBackend -> compBackend];
+                            applyRowModulators[mat, Lookup[modByKey, k, None]]
+                        ]
+                    ]
+                ],
+                {k, Keys[peaksByKey]}
+            ];
+            Return[<|"DataMap" -> results, "Peaks2D" -> None|>]
+        ]
+    ];
+
     de2Mat = toPackedComplexMat[dAct * Exp[I * Outer[Times, w2Act, t2Vec]]];
 
     If[ev1Mode === "Standard",
@@ -1034,6 +1139,8 @@ EvaluatePeriodicCOMPUTE2D[spec_Association] := Module[
             Do[
                 Module[{key = comp["Key"], weight = N[Lookup[comp, "Weight", 1.]],
                         mod = Lookup[comp, "RowModulators", None],
+                        compTauP = N[Re[Lookup[comp, "PrepDuration", tauP]]],
+                        compTauM = N[Re[Lookup[comp, "MixDuration", tauM]]],
                         rhoByG = comp["RhoByGamma"], mixByPhase = comp["MixByPhase"],
                         u1ByK, aMat, sMat, gIdx, tGStart, t1Start, t1End, rhoList, nStates,
                         m1s, j1s, d1s, m1e, j1e, d1e, dm1, u1Prop, p1, p1C, fStartInv, fEnd,
@@ -1041,7 +1148,7 @@ EvaluatePeriodicCOMPUTE2D[spec_Association] := Module[
                     sMat = ConstantArray[0. + 0. I, {n1, n2}];
                     Do[
                         tGStart = gammaOffsets[[gIdx]] * dTau;
-                        t1Start = tGStart + tauP;
+                        t1Start = tGStart + compTauP;
                         rhoList = toPackedComplexMat /@ If[Length[rhoByG] === 1, rhoByG[[1]], rhoByG[[gIdx]]];
                         nStates = Length[rhoList];
                         {m1s, j1s, d1s} = splitFloquetPhaseTime[t1Start, period, dTau, nDiv];
@@ -1064,7 +1171,7 @@ EvaluatePeriodicCOMPUTE2D[spec_Association] := Module[
                                 mixStep["Kind"] === "Unitary", mixStep["U"] . rho1 . mixStep["UH"],
                                 True, ApplyHilbertMixSequence[rho1, mixStep["Steps"]]
                             ];
-                            With[{phiM = t1End + tauM},
+                            With[{phiM = t1End + compTauM},
                                 pkM = phaseKeyOf[phiM];
                                 deInf = buildDe2Hilbert[phiM];
                                 aMat[[k1]] = Flatten[deInf["FStartInv"] . rhoM . deInf["FStart"]];
@@ -1139,6 +1246,8 @@ EvaluatePeriodicCOMPUTE2D[spec_Association] := Module[
             Do[
                 Module[{key = comp["Key"], weight = N[Lookup[comp, "Weight", 1.]],
                         mod = Lookup[comp, "RowModulators", None],
+                        compTauP = N[Re[Lookup[comp, "PrepDuration", tauP]]],
+                        compTauM = N[Re[Lookup[comp, "MixDuration", tauM]]],
                         rhoByG = comp["RhoByGamma"], mixByPhase = comp["MixByPhase"],
                         aMat, sMat, gIdx, tGStart, t1Start, t1End, rhoList, nStates,
                         m1s, j1s, d1s, m1e, j1e, d1e, dm1, p1, fStartInv, fEnd, u1Prop, a1End,
@@ -1146,7 +1255,7 @@ EvaluatePeriodicCOMPUTE2D[spec_Association] := Module[
                     sMat = ConstantArray[0. + 0. I, {n1, n2}];
                     Do[
                         tGStart = gammaOffsets[[gIdx]] * dTau;
-                        t1Start = tGStart + tauP;
+                        t1Start = tGStart + compTauP;
                         rhoList = toPackedComplexVec /@ If[Length[rhoByG] === 1, rhoByG[[1]], rhoByG[[gIdx]]];
                         nStates = Length[rhoList];
                         {m1s, j1s, d1s} = splitFloquetPhaseTime[t1Start, period, dTau, nDiv];
@@ -1169,7 +1278,7 @@ EvaluatePeriodicCOMPUTE2D[spec_Association] := Module[
                             rho1 = u1Prop . rho0;
                             mixStep = lookupMixStep[mixByPhase, t1End];
                             rhoM = If[mixStep["Kind"] === "Identity", rho1, mixStep["Mat"] . rho1];
-                            With[{phiM = t1End + tauM},
+                            With[{phiM = t1End + compTauM},
                                 pkM = phaseKeyOf[phiM];
                                 deInf = buildDe2Liouville[phiM];
                                 aMat[[k1]] = deInf["FStartInv"] . rhoM;
@@ -1218,10 +1327,14 @@ EvaluateCompiledEnsembleChunk2D[chunkPayload_Association] := Module[
      quadMeta = chunkPayload["QuadMeta"],
      atomSpecs = chunkPayload["AtomSpecs"],
      fixedSpec = Lookup[chunkPayload, "FixedSpec", <||>],
-     acc = <||>, buildMat, buildCompsForMember, evalMember, memberOut, w, m, k,
+     extractPeaksQ = TrueQ[Lookup[Lookup[chunkPayload, "FixedSpec", <||>], "ExtractPeaksOnly", False]],
+     acc = <||>, bagA = <||>, bagW1 = <||>, bagW2 = <||>, buildMat, buildCompsForMember, evalMember, memberOut, w, m, k,
      applySpinZPacked, applyQuadTransform, prepBase},
 
-    Do[acc[k] = ConstantArray[0. + 0. I, {n1, n2}], {k, keys}];
+    If[extractPeaksQ,
+        Do[bagA[k] = Internal`Bag[]; bagW1[k] = Internal`Bag[]; bagW2[k] = Internal`Bag[], {k, keys}],
+        Do[acc[k] = ConstantArray[0. + 0. I, {n1, n2}], {k, keys}]
+    ];
 
     buildMat[atomSpec_Association, coeffsVec_List] := If[
         atomSpec["IsZero"],
@@ -1312,7 +1425,8 @@ EvaluateCompiledEnsembleChunk2D[chunkPayload_Association] := Module[
                                 "H1Diag" -> h1Diag, "H2Diag" -> h2Diag,
                                 "Time1" -> time1, "Time2" -> time2,
                                 "QAdjMat" -> qObj, "NormDenom" -> normDenom,
-                                "Components" -> comps, "ComputePeaks" -> False
+                                "Components" -> comps, "ComputePeaks" -> False,
+                                "ExtractPeaksOnly" -> extractPeaksQ
                             |>],
                             Module[{h1aMat, h1bMat, h1aDiag, h1bDiag},
                                 h1aMat = If[KeyExistsQ[atomSpecs, "H1a"],
@@ -1559,6 +1673,8 @@ EvaluateCompiledEnsembleChunk2D[chunkPayload_Association] := Module[
                                 "Key" -> tmpl["Key"],
                                 "Weight" -> tmpl["Weight"],
                                 "RowModulators" -> tmpl["RowModulators"],
+                                "PrepDuration" -> Lookup[tmpl, "PrepDuration", fixedSpec["PrepDuration"]],
+                                "MixDuration" -> Lookup[tmpl, "MixDuration", fixedSpec["MixDuration"]],
                                 "RhoByGamma" -> If[varRhoByG =!= None, varRhoByG, {rStatesFixed}],
                                 "MixByPhase" -> If[varMixByPhase =!= None, varMixByPhase, mixFixed]
                             |>
@@ -1581,19 +1697,47 @@ EvaluateCompiledEnsembleChunk2D[chunkPayload_Association] := Module[
         ]
     ];
 
-    Do[
-        w = weights[[m]];
-        memberOut = evalMember[m];
-        With[{dMap = memberOut["DataMap"]},
-            Do[
-                acc[k] = acc[k] + w * dMap[k],
-                {k, keys}
-            ]
-        ],
-        {m, nChunk}
-    ];
-    Do[acc[k] = toPackedComplexMat[acc[k]], {k, keys}];
-    <|"DataMap" -> acc|>
+    If[extractPeaksQ,
+        Do[
+            w = weights[[m]];
+            memberOut = evalMember[m];
+            With[{pMap = memberOut["PeaksByKey"]},
+                Do[
+                    With[{pk = pMap[k]},
+                        If[pk[[1]] =!= {},
+                            Internal`StuffBag[bagA[k], toPackedComplexVec[w * pk[[1]]]];
+                            Internal`StuffBag[bagW1[k], pk[[2]]];
+                            Internal`StuffBag[bagW2[k], pk[[3]]]
+                        ]
+                    ],
+                    {k, keys}
+                ]
+            ],
+            {m, nChunk}
+        ];
+        Return[<|"PeakBags" -> AssociationMap[Function[{k},
+            Module[{pA = Internal`BagPart[bagA[k], All], pW1 = Internal`BagPart[bagW1[k], All], pW2 = Internal`BagPart[bagW2[k], All]},
+                If[pA === {},
+                    {{}, {}, {}},
+                    {toPackedComplexVec[If[Length[pA] === 1, pA[[1]], Join @@ pA]],
+                     toPackedRealVec[If[Length[pW1] === 1, pW1[[1]], Join @@ pW1]],
+                     toPackedRealVec[If[Length[pW2] === 1, pW2[[1]], Join @@ pW2]]}
+                ]
+            ]], keys]|>],
+        Do[
+            w = weights[[m]];
+            memberOut = evalMember[m];
+            With[{dMap = memberOut["DataMap"]},
+                Do[
+                    acc[k] = acc[k] + w * dMap[k],
+                    {k, keys}
+                ]
+            ],
+            {m, nChunk}
+        ];
+        Do[acc[k] = toPackedComplexMat[acc[k]], {k, keys}];
+        <|"DataMap" -> acc|>
+    ]
 ];
 
 End[];

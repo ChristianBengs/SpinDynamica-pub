@@ -3677,11 +3677,44 @@ op2*LiouvilleBracket[op1,op];
 
 
 (* ::Input::Initialization:: *)
+(* ::Input::Initialization:: *)
+CoherenceOrder::invalorder="Invalid coherence order specification `1`; coherence orders must be integers or numerically equivalent integers.";
+
+
+(* ::Input::Initialization:: *)
+canonicalizeCoherenceOrderScalar[x_]:=Module[{xn,rx,ix,k},
+    If[IntegerQ[x],Return[x]];
+    If[!NumericQ[x],Return[$Failed]];
+    xn=Quiet[Check[N[x],$Failed]];
+    If[!NumberQ[xn],Return[$Failed]];
+    rx=Re[xn]; ix=Im[xn];
+    k=Round[rx];
+    If[Abs[ix]<=1.*^-12*Max[1.,Abs[rx]] && Abs[rx-k]<=1.*^-12*Max[1.,Abs[k]],
+        k,
+        $Failed
+    ]
+];
+
+canonicalizeCoherenceOrders[orders_List]:=Module[{canon},
+    canon=canonicalizeCoherenceOrderScalar/@orders;
+    If[MemberQ[canon,$Failed],
+        Message[CoherenceOrder::invalorder,orders];
+        Return[$Failed]
+    ];
+    DeleteDuplicates[canon]
+];
+
+
+(* ::Input::Initialization:: *)
 SetAttributes[CoherenceOrderFiltrationSuperoperator,NHoldFirst];
 
 
 (* ::Input::Initialization:: *)
 CoherenceOrderFiltrationSuperoperator/:HoldPattern[Times[a___,_CoherenceOrderFiltrationSuperoperator,b___]]/;Or@@(SuperoperatorQ/@{a,b}):=(Message[Superoperator::times];$Failed);
+
+
+(* ::Input::Initialization:: *)
+CoherenceOrderFiltrationSuperoperator[args___]/;!FreeQ[{args},$Failed]:=$Failed;
 
 
 (* ::Input::Initialization:: *)
@@ -3713,13 +3746,36 @@ CoherenceOrderFiltrationSuperoperator[arg1___,{spin:Except[_List],orders:{Except
 
 
 (* ::Input::Initialization:: *)
+CoherenceOrderFiltrationSuperoperator[filters:({{Except[_List]..},{Except[_List]..}}..),opts___Rule]/;
+    !AllTrue[Flatten[Last/@{filters},1],IntegerQ]:=
+Module[{canonPairs,ord},
+    canonPairs=Table[
+        ord=canonicalizeCoherenceOrders[f[[2]]];
+        If[ord===$Failed,Return[$Failed,Module]];
+        {f[[1]],ord},
+        {f,{filters}}
+    ];
+    If[canonPairs===$Failed,$Failed,
+        CoherenceOrderFiltrationSuperoperator[Sequence@@canonPairs,opts]
+    ]
+];
+
+
+(* ::Input::Initialization:: *)
 sop_CoherenceOrderFiltrationSuperoperator[0]=NullOperator[];
 
 
 (* ::Input::Initialization:: *)
-HoldPattern[CoherenceOrderFiltrationSuperoperator[args___][op_?OperatorQ]]:=
-BasisOperators[] . SuperoperatorMatrixRepresentation[CoherenceOrderFiltrationSuperoperator[args]
-] . OperatorVectorRepresentation[op]
+HoldPattern[CoherenceOrderFiltrationSuperoperator[args___][op_?OperatorQ]]:=Module[
+    {sys=If[MatrixQ[SpinSystem[]],SpinSystem[],SpinSystem[op]],canOb,canB,mat,vec,ops},
+    canOb=ZeemanKetBraOperatorBasis[sys,Sorted->"Canonical"];
+    canB=ZeemanBasis[sys];
+    mat=SuperoperatorMatrixRepresentation[CoherenceOrderFiltrationSuperoperator[args],canOb,canB];
+    If[mat===$Failed,Return[$Failed]];
+    vec=OperatorVectorRepresentation[op,canOb,canB];
+    ops=BasisOperators[canOb];
+    If[MatrixQ[mat] && VectorQ[vec],ops . (mat . vec),$Failed]
+];
 
 
 (* ::Input::Initialization:: *)
@@ -4489,10 +4545,12 @@ If[MatchQ[opbasis,ZeemanKetBraOperatorBasis[_?MatrixQ,Sorted->"Canonical"]] &&
 
 (* ::Input::Initialization:: *)
 canonicalCoherencePositions[filters_,system_]:=Module[
-    {sets=First/@filters,labels=First/@system,invalid,dims,strides,index,dim,magnetizations,
+    {sets=First/@filters,canonOrders,labels=First/@system,invalid,dims,strides,index,dim,magnetizations,
      projections,allowed,allColumns,columnsFor},
     invalid=Complement[Flatten[sets,1],labels];
     If[invalid=!={},Message[CoherenceOrder::invalspins,invalid];Return[$Failed]];
+    canonOrders=canonicalizeCoherenceOrders/@(Last/@filters);
+    If[MemberQ[canonOrders,$Failed],Return[$Failed]];
     dims=2 (Last/@system)+1;
     dim=Times@@dims;
     index=Range[0,dim-1];
@@ -4502,7 +4560,7 @@ canonicalCoherencePositions[filters_,system_]:=Module[
         -Total[(Mod[Quotient[index,strides[[#]]],dims[[#]]]& /@
             (First/@(FirstPosition[labels,#]& /@ spins)))];
     projections=magnetizations/@sets;
-    allowed=(Alternatives@@Last[#])&/@filters;
+    allowed=(Alternatives@@#)&/@canonOrders;
     allColumns=Range[dim];
     columnsFor[key_]:=columnsFor[key]=Module[{cols=allColumns},
         Do[cols=Pick[cols,key[[f]]-projections[[f,cols]],allowed[[f]]];
