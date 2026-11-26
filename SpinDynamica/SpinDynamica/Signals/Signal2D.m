@@ -1253,10 +1253,24 @@ ProjectSpectrum2D[spec:Spectrum2D[assoc_Association], axis_String, opts:(_Rule|_
     Transpose[{fAxis, toPackedRealVec[vals]}]
 ];
 
+reversedAxisTicks[lo_?NumericQ, hi_?NumericQ, labeledQ_] := Module[
+    {a, b, major, minor},
+    a = Min[-lo, -hi];
+    b = Max[-lo, -hi];
+    If[!(NumericQ[a] && NumericQ[b] && b > a), Return[{}]];
+    major = Select[FindDivisions[{a, b}, 6], a - 1.*^-9 <= # <= b + 1.*^-9 &];
+    minor = Select[Complement[FindDivisions[{a, b}, 30], major], a - 1.*^-9 <= # <= b + 1.*^-9 &];
+    Join[
+        ({-#, If[TrueQ[labeledQ], If[Abs[#] < 1.*^-12, 0, #], ""], {0.012, 0.}} &) /@ major,
+        ({-#, "", {0.006, 0.}} &) /@ minor
+    ]
+];
+
 PlotSpectrum2D[spec:Spectrum2D[assoc_Association], opts:(_Rule|_RuleDelayed)...] := Module[
     {compOpt, unitsOpt, revOpt, nContours, baseFrac, cFactor, posCol, negCol, showProj,
-     pRange, passOpts, effComp, zMat, scale, f1, f2, unitLabel, maxAbs, posLevels,
-     negLevels, levels, revDir, revInd, sf, mainPlot, topProj, sideProj, pTop, pSide},
+     pRange, passOpts, effComp, zMat, zPlot, scale, f1, f2, xRange, yRange, effPlotRange,
+     unitLabel, maxAbs, posLevels, negLevels, levels, revDir, revInd, frameTicksOpt,
+     mainPlot, topProj, sideProj, topPts, sidePts, xProjRange, yProjRange, pTop, pSide},
 
     compOpt = Component /. {opts} /. Options[PlotSpectrum2D];
     unitsOpt = AxisUnits /. {opts} /. Options[PlotSpectrum2D];
@@ -1269,7 +1283,10 @@ PlotSpectrum2D[spec:Spectrum2D[assoc_Association], opts:(_Rule|_RuleDelayed)...]
     showProj = TrueQ[ShowProjections /. {opts} /. Options[PlotSpectrum2D]];
     pRange = PlotRange /. {opts} /. Options[PlotSpectrum2D];
     If[MatchQ[pRange, {{_, _}, {_, _}}], pRange = Append[pRange, All]];
-    passOpts = FilterRules[{opts}, Options[ListContourPlot]];
+    passOpts = DeleteCases[
+        FilterRules[{opts}, Options[ListContourPlot]],
+        (PlotRange | ScalingFunctions) -> _ | (PlotRange | ScalingFunctions) :> _
+    ];
 
     effComp = If[compOpt === Automatic,
         If[assoc["QuadratureMethod"] === "PhaseModulated", "Magnitude", "Real"],
@@ -1288,19 +1305,50 @@ PlotSpectrum2D[spec:Spectrum2D[assoc_Association], opts:(_Rule|_RuleDelayed)...]
         {revDir, revInd} = TrueQ /@ revOpt,
         {revDir, revInd} = {TrueQ[revOpt], TrueQ[revOpt]}
     ];
-    sf = {If[revDir, "Reverse", Identity], If[revInd, "Reverse", Identity]};
 
-    maxAbs = Max[Abs[zMat]];
+    (* Reverse array and negate ascending coordinates instead of ScalingFunctions -> "Reverse",
+       which triggers dense oscillatory mesh artifacts in Wolfram's ListContourPlot. *)
+    zPlot = zMat;
+    If[revInd, zPlot = Reverse[zPlot]];
+    If[revDir, zPlot = Reverse[zPlot, 2]];
+    xRange = If[revDir, {-Last[f2], -First[f2]}, {First[f2], Last[f2]}];
+    yRange = If[revInd, {-Last[f1], -First[f1]}, {First[f1], Last[f1]}];
+
+    effPlotRange = pRange;
+    If[ListQ[effPlotRange] && Length[effPlotRange] >= 2 && (ListQ[effPlotRange[[1]]] || ListQ[effPlotRange[[2]]]),
+        If[revDir && MatchQ[effPlotRange[[1]], {_?NumericQ, _?NumericQ}],
+            effPlotRange[[1]] = Sort[-N[effPlotRange[[1]]]]
+        ];
+        If[revInd && MatchQ[effPlotRange[[2]], {_?NumericQ, _?NumericQ}],
+            effPlotRange[[2]] = Sort[-N[effPlotRange[[2]]]]
+        ];
+    ];
+
+    frameTicksOpt = If[(revDir || revInd) && FreeQ[First /@ passOpts, FrameTicks],
+        FrameTicks -> {
+            {
+                If[revInd, reversedAxisTicks[#1, #2, True] &, Automatic],
+                If[revInd, reversedAxisTicks[#1, #2, False] &, Automatic]
+            },
+            {
+                If[revDir, reversedAxisTicks[#1, #2, True] &, Automatic],
+                If[revDir, reversedAxisTicks[#1, #2, False] &, Automatic]
+            }
+        },
+        Sequence @@ {}
+    ];
+
+    maxAbs = Max[Abs[zPlot]];
     mainPlot = If[maxAbs == 0.,
         ListContourPlot[
             {{0., 0.}, {0., 0.}},
-            DataRange -> {{First[f2], Last[f2]}, {First[f1], Last[f1]}},
+            DataRange -> {xRange, yRange},
             Contours -> 0,
             ContourShading -> None,
-            ScalingFunctions -> sf,
             Frame -> True,
             FrameLabel -> {"F2 (" <> unitLabel <> ")", "F1 (" <> unitLabel <> ")"},
-            PlotRange -> If[pRange === All, {{First[f2], Last[f2]}, {First[f1], Last[f1]}, All}, pRange],
+            PlotRange -> If[effPlotRange === All, {xRange, yRange, All}, effPlotRange],
+            frameTicksOpt,
             Sequence @@ passOpts
         ],
         posLevels = Table[{baseFrac * maxAbs * (cFactor^k), Directive[posCol]}, {k, 0, nContours - 1}];
@@ -1310,14 +1358,14 @@ PlotSpectrum2D[spec:Spectrum2D[assoc_Association], opts:(_Rule|_RuleDelayed)...]
         ];
         levels = Join[Reverse[negLevels], posLevels];
         ListContourPlot[
-            zMat,
-            DataRange -> {{First[f2], Last[f2]}, {First[f1], Last[f1]}},
+            zPlot,
+            DataRange -> {xRange, yRange},
             Contours -> levels,
             ContourShading -> None,
-            ScalingFunctions -> sf,
             Frame -> True,
             FrameLabel -> {"F2 (" <> unitLabel <> ")", "F1 (" <> unitLabel <> ")"},
-            PlotRange -> pRange,
+            PlotRange -> effPlotRange,
+            frameTicksOpt,
             Sequence @@ passOpts
         ]
     ];
@@ -1326,19 +1374,27 @@ PlotSpectrum2D[spec:Spectrum2D[assoc_Association], opts:(_Rule|_RuleDelayed)...]
 
     topProj = ProjectSpectrum2D[spec, "F2", AxisUnits -> unitsOpt, Component -> effComp, Method -> "Skyline"];
     sideProj = ProjectSpectrum2D[spec, "F1", AxisUnits -> unitsOpt, Component -> effComp, Method -> "Skyline"];
-    pTop = ListLinePlot[topProj,
+    topPts = If[revDir, Transpose[{-topProj[[All, 1]], topProj[[All, 2]]}], topProj];
+    sidePts = If[revInd, Transpose[{sideProj[[All, 2]], -sideProj[[All, 1]]}], Reverse /@ sideProj];
+    xProjRange = If[MatchQ[effPlotRange, {{_, _}, ___}] && MatchQ[effPlotRange[[1]], {_?NumericQ, _?NumericQ}],
+        effPlotRange[[1]],
+        xRange
+    ];
+    yProjRange = If[MatchQ[effPlotRange, {{_, _}, {_, _}, ___}] && MatchQ[effPlotRange[[2]], {_?NumericQ, _?NumericQ}],
+        effPlotRange[[2]],
+        yRange
+    ];
+    pTop = ListLinePlot[topPts,
         Frame -> True, Axes -> False,
         FrameTicks -> {{None, None}, {None, None}},
-        PlotRange -> All,
-        ScalingFunctions -> {If[revDir, "Reverse", Identity], Identity},
+        PlotRange -> {xProjRange, All},
         PlotStyle -> Directive[posCol, AbsoluteThickness[1.2]],
         ImageSize -> {320, 75}
     ];
-    pSide = ListLinePlot[Reverse /@ sideProj,
+    pSide = ListLinePlot[sidePts,
         Frame -> True, Axes -> False,
         FrameTicks -> {{None, None}, {None, None}},
-        PlotRange -> All,
-        ScalingFunctions -> {Identity, If[revInd, "Reverse", Identity]},
+        PlotRange -> {All, yProjRange},
         PlotStyle -> Directive[posCol, AbsoluteThickness[1.2]],
         ImageSize -> {75, 320}
     ];
