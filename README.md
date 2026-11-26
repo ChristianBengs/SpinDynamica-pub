@@ -79,4 +79,4 @@ If you use SpinDynamica in published research, please cite:
 
 ## License
 
-SpinDynamica is open-source software. A formal `LICENSE` file will be added to the repository.
+SpinDynamica is open-source software.
