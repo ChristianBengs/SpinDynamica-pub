@@ -108,6 +108,18 @@ permalink: /
   </div>
 </section>
 
+<section id="whats-new">
+  <h2>What&rsquo;s New in v4.0.0</h2>
+  <p>
+    Version 4.0.0 introduces major additions for experimental data import, pulse-sequence optimal control,
+    and high-performance two-dimensional NMR simulations:
+  </p>
+  {% include whats-new.html %}
+  <p>
+    Explore executable walkthroughs of these features in the <a href="{{ '/examples/' | relative_url }}">Examples</a> section.
+  </p>
+</section>
+
 <section>
   <h2>Getting Started</h2>
   <p>

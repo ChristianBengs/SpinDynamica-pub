@@ -37,6 +37,10 @@ permalink: /download/
 </div>
 {% endif %}
 
+## What&rsquo;s New in v4.0.0
+
+{% include whats-new.html %}
+
 ## Previous Releases
 
 <p>

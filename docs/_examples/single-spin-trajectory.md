@@ -52,4 +52,4 @@ Plot[{tz[t], ty[t]}, {t, 0, 1},
 
 ## Further Reading
 
-- [Part 2: Simulations (`SD.3.10-part2-Simulations.nb`)]({{ site.repository_url }}/blob/{{ site.repository_branch }}/SpinDynamica/documentation/SD.3.10-part2-Simulations.nb) covers `Trajectory`, `TransformationAmplitude`, and `Signal1D` in detail.
+- [Part 2: Simulations (`SDv4.0.0-part2-Simulations.nb`)]({{ site.repository_url }}/blob/{{ site.repository_branch }}/SpinDynamica/documentation/SDv4.0.0-part2-Simulations.nb) covers `Trajectory`, `TransformationAmplitude`, and `Signal1D` in detail.

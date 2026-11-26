@@ -68,4 +68,4 @@ PlotOptimalControlTrajectory[res, ks[[1]], {opI[1, "x"], opI[1, "y"], opI[1, "z"
 
 - `VerifyOptimalControlGradient` compares exact analytical GRAPE gradients against central finite differences before optimization.
 - `VerifyOptimalControlSimulation` exports the optimized pulse via `OptimalControlEventList` and re-propagates it independently with `NPropagationOperator`.
-- See the full interactive notebook [01_GRAPE_and_SingleSpin_Rotations.nb]({{ site.repository_url }}/blob/{{ site.repository_branch }}/SpinDynamica/Examples/OptimalControl/Notebooks/01_GRAPE_and_SingleSpin_Rotations.nb) on GitHub for additional explanations and variations.
+- See the full interactive notebook [OptimalControl_Tutorial_01_SingleSpin_GRAPE.nb]({{ site.repository_url }}/blob/{{ site.repository_branch }}/SpinDynamica/Examples/OptimalControl/OptimalControl_Tutorial_01_SingleSpin_GRAPE.nb) on GitHub for additional explanations and variations.

@@ -10,12 +10,16 @@ permalink: /about/
 
 SpinDynamica is a Wolfram Mathematica framework for symbolic and numerical calculations in magnetic resonance spin dynamics. It is designed to provide a flexible, transparent platform in which spin Hamiltonians, Liouvillians, pulse sequences, trajectories, and optimal-control tasks can be expressed close to the underlying quantum-mechanical notation.
 
-As noted in the introductory documentation (`SD.3.10-part1-Intro.nb`), exact Hilbert- and Liouville-space calculations are general for any spin system, though memory requirements and runtime grow rapidly beyond roughly six coupled spins. Relaxation is supported in the Redfield regime, while slower fluctuating processes such as chemical exchange can be modeled through ensemble averaging of time-domain trajectories.
+As noted in the introductory documentation (`SDv4.0.0-part1-Intro.nb`), exact Hilbert- and Liouville-space calculations are general for any spin system, though memory requirements and runtime grow rapidly beyond roughly six coupled spins. Relaxation is supported in the Redfield regime, while slower fluctuating processes such as chemical exchange can be modeled through ensemble averaging of time-domain trajectories.
 
 ## Authors
 
 - **Malcolm H. Levitt**
 - **Christian Bengs**
+
+## Acknowledgements
+
+Recent changes and additions in SpinDynamica were initiated by **Mohamed Sabba** and **Christian Bengs** and developed with the assistance of **Astra** and **Antigravity**.
 
 <div class="placeholder-note">
   <p>
@@ -35,7 +39,7 @@ If you use SpinDynamica in published work, please cite:
 
 ## License
 
-SpinDynamica is open-source software, as stated in the introductory documentation (`SD.3.10-part1-Intro.nb`).
+SpinDynamica is open-source software, as stated in the introductory documentation (`SDv4.0.0-part1-Intro.nb`).
 
 <div class="placeholder-note">
   <p>

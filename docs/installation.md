@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Installation
-summary: How to install SpinDynamica, configure Mathematica's $Path, and verify the installation.
+summary: How to install SpinDynamica via Wolfram Paclet or manual $Path setup, and verify the installation.
 section: installation
 permalink: /installation/
 ---
@@ -9,18 +9,32 @@ permalink: /installation/
 
 ## Requirements
 
-- **Wolfram Mathematica:** version {{ rel.min_mathematica }} or later (documented and tested under Mathematica {{ rel.tested_mathematica }}).
-- **SpinDynamica distribution archive** from the [Download]({{ '/download/' | relative_url }}) page.
+- **Wolfram Mathematica:** version {{ rel.min_mathematica }} or later (tested under Mathematica {{ rel.tested_mathematica }}).
+- **SpinDynamica distribution** (`.paclet` file or source archive) from the [Download]({{ '/download/' | relative_url }}) page.
 
-## 1. Unpack the Package
+## Method 1: Install as a Wolfram Paclet (Recommended)
 
-Download the release archive and extract it to a permanent location on your computer. Keep the `SpinDynamica` directory (containing `SpinDynamica.m` and its module subdirectories) intact and unmodified.
+Download the `.paclet` file (for example, `SpinDynamica-{{ rel.version }}.paclet`) from the [Download]({{ '/download/' | relative_url }}) page and install it from a Mathematica notebook:
 
-## 2. Inform Mathematica Where SpinDynamica Is Located
+```mathematica
+PacletInstall["/path/to/SpinDynamica-{{ rel.version }}.paclet"]
+```
 
-Mathematica searches the directories listed in `$Path` when loading packages. You can add your `SpinDynamica` directory either per notebook or persistently for all sessions.
+On Windows, use escaped backslashes or forward slashes in the file path (for example, `"C:/path/to/SpinDynamica-{{ rel.version }}.paclet"`).
 
-### Option A: Per-Notebook Setup (Recommended for Reproducibility)
+Once installed as a paclet, SpinDynamica can be loaded directly in any new Mathematica session without modifying `$Path`:
+
+```mathematica
+Needs["SpinDynamica`"]
+```
+
+To remove or replace an installed paclet later, evaluate `PacletUninstall["SpinDynamica"]`.
+
+## Method 2: Manual Installation via `$Path`
+
+If you prefer not to install a paclet (or are working directly from an unpacked source archive), extract the archive to a permanent location while keeping the inner `SpinDynamica` directory (containing `SpinDynamica.m` and its module subdirectories) intact.
+
+### Per-Notebook Setup
 
 Place one of the following lines at the top of your Mathematica notebook, replacing the path with the directory that contains `SpinDynamica.m`:
 
@@ -30,19 +44,15 @@ PrependTo[$Path, "/path/to/SpinDynamica"];
 
 (* Windows *)
 PrependTo[$Path, "C:\\path\\to\\SpinDynamica"];
+
+Needs["SpinDynamica`"]
 ```
 
-### Option B: Persistent Setup via `init.m`
+### Persistent Setup via `init.m`
 
 To configure `$Path` automatically whenever a Mathematica kernel starts, add the same `PrependTo[$Path, ...]` statement to `init.m` in Mathematica's `Autoload` or user `Kernel` directory (as described in Part 1 of the [documentation notebooks]({{ '/documentation/' | relative_url }})). Restart the kernel and evaluate `$Path` to verify that the directory appears in the list.
 
-## 3. Load SpinDynamica
-
-Execute the following command in a Mathematica notebook:
-
-```mathematica
-Needs["SpinDynamica`"]
-```
+## Notes on Loading
 
 When loaded, SpinDynamica displays a startup banner showing the active version, Mathematica version, and operating system.
 
@@ -54,7 +64,7 @@ When loaded, SpinDynamica displays a startup banner showing the active version, 
   </p>
 </div>
 
-## 4. Verify the Installation
+## Verify the Installation
 
 Evaluate `$SpinDynamicaVersion` and `SpinDynamicaSymbols[]` to confirm that the package loaded properly and inspect the active routines:
 

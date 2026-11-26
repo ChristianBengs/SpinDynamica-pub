@@ -1,23 +1,22 @@
 # Single source of truth for SpinDynamica release metadata displayed on the website.
-# To announce a new GitHub Release:
-#   1. Create and publish the versioned release on GitHub.
-#   2. Set `published: true` and update `version`, `tag`, `release_date`,
-#      and (optionally) `asset_name` and `notes_summary`.
-#   3. Move the previous release entry into `previous_releases`.
+# To announce the v4.0.0 GitHub Release once published:
+#   1. Create and publish tag `v4.0.0` on GitHub Releases and attach `dist/SpinDynamica-4.0.0.paclet`.
+#   2. Set `published: true` and fill in `release_date`.
+#   3. For future releases, move the previous entry into `previous_releases`.
 
 published: false
-version: ""
-tag: ""
+version: "4.0.0"
+tag: "v4.0.0"
 release_date: ""
-asset_name: ""
+asset_name: "SpinDynamica-4.0.0.paclet"
 min_mathematica: "8.0"
-tested_mathematica: "14.1"
-notes_summary: ""
+tested_mathematica: "14.1–15.0"
+notes_summary: "Introduces Bruker DataLoader, GRAPE Optimal Control, high-performance Signal2D simulations, and Wolfram Paclet distribution."
 
 previous_releases: []
 # Example once prior releases exist:
 # previous_releases:
-#   - version: "3.10.0"
-#     tag: "v3.10.0"
+#   - version: "4.0.0"
+#     tag: "v4.0.0"
 #     release_date: "YYYY-MM-DD"
 #     notes: "Initial GitHub release."
